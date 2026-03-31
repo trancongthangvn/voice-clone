@@ -95,11 +95,9 @@ class ModelManager:
                 torch.cuda.empty_cache()
 
     def maybe_unload_whisper(self, idle_seconds=300):
-        """Unload Whisper if idle for too long."""
-        with self._lock:
-            if (self._whisper_model is not None
-                    and time.time() - self._whisper_last_used > idle_seconds):
-                self.unload_whisper()
+        """Unload Whisper if idle for too long. Disabled by default - keep models in VRAM."""
+        # Disabled: user wants max GPU utilization, keep all models loaded
+        pass
 
 
 # Global instance
@@ -133,14 +131,12 @@ def get_gpu_info():
     return None
 
 
-def check_gpu_memory(min_free_mb=2000):
+def check_gpu_memory(min_free_mb=1000):
     """Check if GPU has enough free memory for inference."""
     info = get_gpu_info()
     if info and info["memory_free_mb"] < min_free_mb:
-        # Try to free memory
-        models.unload_whisper()
         torch.cuda.empty_cache()
-        time.sleep(0.5)
+        time.sleep(0.3)
         info = get_gpu_info()
         if info and info["memory_free_mb"] < min_free_mb:
             return False, f"GPU memory thấp: {info['memory_free_mb']}MB free (cần {min_free_mb}MB)"
