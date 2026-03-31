@@ -302,8 +302,8 @@ def preprocess_audio(audio_path, target_sr=24000):
     return data, sr
 
 
-def validate_audio(audio_path, min_duration=1, max_duration=600):
-    """Validate audio file and return info."""
+def validate_audio(audio_path, min_duration=1, max_duration=0):
+    """Validate audio file. max_duration=0 means no limit."""
     try:
         data, sr = sf.read(str(audio_path), dtype="float32")
         if data.ndim > 1:
@@ -312,7 +312,7 @@ def validate_audio(audio_path, min_duration=1, max_duration=600):
 
         if duration < min_duration:
             return None, f"Audio quá ngắn ({duration:.1f}s). Cần ít nhất {min_duration}s."
-        if duration > max_duration:
+        if max_duration > 0 and duration > max_duration:
             return None, f"Audio quá dài ({duration:.1f}s). Tối đa {max_duration}s."
 
         # Check for silence

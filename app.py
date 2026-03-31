@@ -348,7 +348,7 @@ def train_new_voice(audio_file, voice_name, description, transcript, auto_transc
     if voice_dir.exists():
         return f"Giọng '{voice_id}' đã tồn tại. Chọn tên khác."
 
-    info, msg = validate_audio(audio_file, min_duration=10, max_duration=600)
+    info, msg = validate_audio(audio_file, min_duration=10, max_duration=0)
     if info is None:
         return msg
 
