@@ -16,7 +16,7 @@ echo "Start time: $(date)"
 
 source "$VENV"
 cd "$SOVITS_DIR"
-export PYTHONPATH="$SOVITS_DIR:$PYTHONPATH"
+export PYTHONPATH="$SOVITS_DIR:$SOVITS_DIR/GPT_SoVITS:$PYTHONPATH"
 
 OPT_DIR="$SOVITS_DIR/logs/$VOICE_ID"
 mkdir -p "$OPT_DIR"

@@ -12,6 +12,7 @@ import sys
 # Add GPT-SoVITS to path
 SOVITS_DIR = os.path.join(os.path.dirname(__file__), "GPT-SoVITS")
 sys.path.insert(0, SOVITS_DIR)
+sys.path.insert(0, os.path.join(SOVITS_DIR, "GPT_SoVITS"))
 os.chdir(SOVITS_DIR)
 
 import soundfile as sf
