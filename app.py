@@ -725,18 +725,122 @@ def get_stt_stats():
 # ============================================================
 
 CUSTOM_CSS = """
-.main-header { text-align: center; padding: 1em 0 0.5em; }
-.main-header h1 { font-size: 2em; margin: 0; }
-.main-header p { color: #888; margin: 0.3em 0 0; font-size: 1.1em; }
-.engine-badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
-    font-size: 0.85em; font-weight: bold; }
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
+/* Global typography */
+.gradio-container { font-family: 'Fira Sans', sans-serif !important; }
+.gradio-container code, .gradio-container pre { font-family: 'Fira Code', monospace !important; }
+
+/* Header */
+.main-header {
+    text-align: center;
+    padding: 1.5em 0 1em;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 0.5em;
+}
+.main-header h1 {
+    font-size: 2.2em;
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #60a5fa, #22c55e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.main-header p {
+    color: #94a3b8;
+    margin: 0.4em 0 0;
+    font-size: 1.05em;
+    font-weight: 300;
+}
+.main-header .version {
+    display: inline-block;
+    margin-top: 0.5em;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    background: rgba(34,197,94,0.15);
+    color: #22c55e;
+    border: 1px solid rgba(34,197,94,0.3);
+}
+
+/* Tabs */
+.tabs > .tab-nav > button {
+    font-family: 'Fira Sans', sans-serif !important;
+    font-weight: 500 !important;
+    font-size: 0.95em !important;
+    padding: 10px 20px !important;
+    border-radius: 8px 8px 0 0 !important;
+    transition: all 0.2s ease !important;
+}
+.tabs > .tab-nav > button.selected {
+    background: linear-gradient(135deg, #1e3a5f, #1e293b) !important;
+    border-bottom: 2px solid #60a5fa !important;
+}
+
+/* Buttons */
+.primary {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+    border: none !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.3) !important;
+}
+.primary:hover {
+    box-shadow: 0 4px 16px rgba(37,99,235,0.5) !important;
+    transform: translateY(-1px) !important;
+}
+button.stop {
+    transition: all 0.2s ease !important;
+}
+
+/* Cards / Panels */
+.panel, .block {
+    border-radius: 12px !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+/* Audio component */
+.audio-container {
+    border-radius: 12px !important;
+}
+
+/* Status badges */
+.status-ready { color: #22c55e; }
+.status-training { color: #eab308; }
+.status-failed { color: #ef4444; }
+
+/* Markdown styling */
+.markdown-text h3 {
+    font-weight: 600 !important;
+    letter-spacing: -0.01em !important;
+    margin-bottom: 0.5em !important;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* Focus states for accessibility */
+*:focus-visible {
+    outline: 2px solid #60a5fa !important;
+    outline-offset: 2px !important;
+}
 """
 
 with gr.Blocks(title="Voice Clone - Overmind") as app:
     gr.HTML("""
         <div class='main-header'>
             <h1>Voice Clone</h1>
-            <p>Clone giọng nói & Text-to-Speech tiếng Việt</p>
+            <p>AI Voice Cloning & Text-to-Speech</p>
+            <span class='version'>Dual Engine: F5-TTS + GPT-SoVITS</span>
         </div>
     """)
 
@@ -972,6 +1076,12 @@ if __name__ == "__main__":
         share=False,
         root_path="https://voice.overmind.io.vn",
         ssr_mode=False,
-        theme=gr.themes.Soft(primary_hue="blue"),
+        theme=gr.themes.Soft(
+            primary_hue=gr.themes.colors.blue,
+            secondary_hue=gr.themes.colors.green,
+            neutral_hue=gr.themes.colors.slate,
+            font=[gr.themes.GoogleFont("Fira Sans"), "sans-serif"],
+            font_mono=[gr.themes.GoogleFont("Fira Code"), "monospace"],
+        ),
         css=CUSTOM_CSS,
     )
