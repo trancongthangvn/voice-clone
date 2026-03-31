@@ -41,8 +41,10 @@ HISTORY_FILE = BASE_DIR / "history.json"
 MODELS_DIR = BASE_DIR / "models"
 MODEL_DIR = MODELS_DIR / "f5-tts-vietnamese"
 VOICE_LIBRARY_DIR = BASE_DIR / "voice_library"
+STT_DATASET_DIR = BASE_DIR / "stt_dataset"
+WHISPER_MODELS_DIR = MODELS_DIR / "whisper"
 
-for d in [VOICES_DIR, OUTPUT_DIR, DATASET_DIR, VOICE_LIBRARY_DIR]:
+for d in [VOICES_DIR, OUTPUT_DIR, DATASET_DIR, VOICE_LIBRARY_DIR, STT_DATASET_DIR, WHISPER_MODELS_DIR]:
     d.mkdir(exist_ok=True)
 
 # Global state
@@ -307,10 +309,15 @@ def library_tts(voice_selection, gen_text, speed):
         return None, f"Lỗi: {str(e)}"
 
 
-def train_new_voice(audio_file, voice_name, description, transcript):
-    """Start training a new voice for the library."""
+def train_new_voice(audio_file, voice_name, description, transcript, auto_transcript=""):
+    """Start training a new voice for the library.
+    Also saves correction data if transcript was edited."""
     if not audio_file or not voice_name or not transcript:
         return "Vui lòng điền đầy đủ: audio, tên, và transcript."
+
+    # Auto-save STT correction if user edited the auto-generated transcript
+    if auto_transcript and transcript.strip() != auto_transcript.strip():
+        save_stt_correction(audio_file, auto_transcript, transcript)
 
     voice_id = voice_name.strip().lower().replace(" ", "_")
     voice_id = re.sub(r'[^a-z0-9_]', '', voice_id)
@@ -494,6 +501,21 @@ def load_whisper():
     global whisper_model
     if whisper_model is None:
         from faster_whisper import WhisperModel
+
+        # Check for fine-tuned model
+        active_file = WHISPER_MODELS_DIR / "active_version.txt"
+        if active_file.exists():
+            version = active_file.read_text().strip()
+            ct2_path = WHISPER_MODELS_DIR / version / "ct2"
+            if ct2_path.exists():
+                print(f"Loading fine-tuned Whisper ({version})...")
+                whisper_model = WhisperModel(
+                    str(ct2_path), device="cuda", compute_type="float16",
+                    num_workers=4, cpu_threads=16,
+                )
+                print(f"Fine-tuned Whisper {version} loaded.")
+                return whisper_model
+
         print("Loading Whisper large-v3 on CUDA float16...")
         whisper_model = WhisperModel(
             "large-v3",
@@ -614,6 +636,79 @@ def auto_transcribe(audio_path):
 
 
 # ============================================================
+# STT Self-learning: collect corrections for fine-tuning
+# ============================================================
+
+def save_stt_correction(audio_path, auto_text, corrected_text):
+    """Save a correction pair when user edits auto-transcribed text.
+    This builds training data for Whisper fine-tuning."""
+    if not audio_path or not corrected_text or not corrected_text.strip():
+        return "Cần audio và text đã sửa."
+    corrected_text = corrected_text.strip()
+    auto_text = (auto_text or "").strip()
+
+    # Skip if no change was made
+    if corrected_text == auto_text:
+        return "Không có thay đổi - không cần lưu."
+
+    try:
+        sample_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
+        dest_audio = STT_DATASET_DIR / f"{sample_id}.wav"
+        data, sr = sf.read(str(audio_path))
+        sf.write(str(dest_audio), data, sr)
+        duration = len(data) / sr
+
+        entry = {
+            "id": sample_id,
+            "audio": dest_audio.name,
+            "auto_text": auto_text,
+            "corrected_text": corrected_text,
+            "duration": round(duration, 2),
+            "saved_at": datetime.now().isoformat(),
+        }
+        with open(STT_DATASET_DIR / "corrections.jsonl", "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        total = _count_stt_samples()
+        return f"Đã lưu correction! Tổng: {total} samples. (Cần ~50+ để fine-tune)"
+    except Exception as e:
+        return f"Lỗi: {e}"
+
+
+def _count_stt_samples():
+    meta = STT_DATASET_DIR / "corrections.jsonl"
+    if not meta.exists():
+        return 0
+    return sum(1 for l in meta.read_text().strip().split("\n") if l.strip())
+
+
+def get_stt_stats():
+    total = _count_stt_samples()
+    if total == 0:
+        return "Chưa có dữ liệu correction. Sửa transcript sau khi nhận dạng để hệ thống tự học."
+
+    meta = STT_DATASET_DIR / "corrections.jsonl"
+    lines = [l for l in meta.read_text().strip().split("\n") if l.strip()]
+    total_dur = 0
+    for l in lines:
+        try:
+            total_dur += json.loads(l).get("duration", 0)
+        except Exception:
+            pass
+
+    # Check active whisper model
+    active_file = WHISPER_MODELS_DIR / "active_version.txt"
+    active = active_file.read_text().strip() if active_file.exists() else "base (large-v3)"
+
+    status = "Sẵn sàng fine-tune!" if total >= 50 else f"Cần thêm {50 - total} samples"
+    return (
+        f"**Corrections:** {total} samples ({total_dur/60:.1f} phút)\n"
+        f"**Whisper model:** {active}\n"
+        f"**Trạng thái:** {status}"
+    )
+
+
+# ============================================================
 # BUILD UI
 # ============================================================
 
@@ -699,7 +794,8 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
 
         # === Tab 3: Voice to Text (STT) ===
         with gr.Tab("Voice to Text"):
-            gr.Markdown("Chuyển giọng nói thành văn bản (Whisper AI)")
+            gr.Markdown("Chuyển giọng nói thành văn bản (Whisper AI) - **càng dùng càng chuẩn**")
+            stt_auto_text = gr.State("")  # store original auto text for comparison
             with gr.Row():
                 with gr.Column(scale=1):
                     stt_audio = gr.Audio(
@@ -713,15 +809,34 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                     )
                     stt_btn = gr.Button("Chuyển thành text", variant="primary", size="lg")
                 with gr.Column(scale=1):
-                    stt_result = gr.Textbox(label="Kết quả text", lines=8, interactive=True)
+                    stt_result = gr.Textbox(
+                        label="Kết quả text (sửa nếu sai → bấm Lưu để hệ thống tự học)",
+                        lines=8, interactive=True,
+                    )
                     stt_details = gr.Markdown(label="Chi tiết")
 
-            stt_btn.click(transcribe_audio, [stt_audio, stt_lang], [stt_result, stt_details])
+            def stt_and_store(audio, lang):
+                text, details = transcribe_audio(audio, lang)
+                return text, details, text  # 3rd output = store auto text
 
-            gr.Markdown("---")
+            stt_btn.click(stt_and_store, [stt_audio, stt_lang],
+                          [stt_result, stt_details, stt_auto_text])
+
+            with gr.Row():
+                stt_save_btn = gr.Button("Lưu correction (giúp AI học)", variant="secondary")
+                stt_save_status = gr.Textbox(label="", interactive=False)
+            stt_stats = gr.Markdown(value=get_stt_stats)
+
+            stt_save_btn.click(
+                save_stt_correction,
+                [stt_audio, stt_auto_text, stt_result],
+                [stt_save_status],
+            )
+
             gr.Markdown(
-                "**Mẹo:** Dùng kết quả text làm transcript khi huấn luyện giọng mới. "
-                "Copy text ở trên → paste vào tab Training Dashboard."
+                "**Cách hoạt động:** Upload audio → Whisper nhận dạng → "
+                "Bạn sửa chỗ sai → Bấm 'Lưu correction' → "
+                "Hệ thống tích lũy dữ liệu → Fine-tune Whisper → Nhận dạng càng chuẩn."
             )
 
         # === Tab 4: Training Dashboard ===
@@ -736,20 +851,25 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                     train_desc = gr.Textbox(label="Mô tả (tùy chọn)",
                                             placeholder="Giọng nam miền Bắc, trầm ấm...")
                     train_transcript = gr.Textbox(
-                        label="Transcript (tự động nhận dạng khi upload audio)",
+                        label="Transcript (tự động nhận dạng → sửa nếu sai → AI tự học)",
                         placeholder="Upload audio ở trên → tự động điền transcript...\n"
-                                    "Hoặc nhập/sửa thủ công.",
+                                    "Sửa chỗ sai trước khi train → hệ thống tự học.",
                         lines=5,
                     )
+                    train_auto_text = gr.State("")  # store auto text
                     with gr.Row():
                         train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary", size="lg")
                     train_status = gr.Textbox(label="Trạng thái", interactive=False)
 
                     # Auto-transcribe when audio uploaded
+                    def auto_transcribe_and_store(audio_path):
+                        text, status = auto_transcribe(audio_path)
+                        return text, status, text  # 3rd = store for correction
+
                     train_audio.change(
-                        fn=auto_transcribe,
+                        fn=auto_transcribe_and_store,
                         inputs=[train_audio],
-                        outputs=[train_transcript, train_status],
+                        outputs=[train_transcript, train_status, train_auto_text],
                     )
 
                 # Right: Monitor & Status
@@ -805,9 +925,9 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                         model_status = gr.Textbox(label="Trạng thái", interactive=False)
                         switch_btn.click(switch_model, [model_dd], [model_status])
 
-            # Wire up training
+            # Wire up training (pass auto_text for correction tracking)
             train_btn.click(train_new_voice,
-                            [train_audio, train_name, train_desc, train_transcript],
+                            [train_audio, train_name, train_desc, train_transcript, train_auto_text],
                             [train_status])
             log_refresh.click(get_training_log, [log_voice_dd], [train_log])
             dash_refresh.click(refresh_dashboard,
