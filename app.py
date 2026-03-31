@@ -733,28 +733,28 @@ CUSTOM_CSS = """
 
 @font-face {
     font-family: 'SVN Gilroy';
-    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Light.woff2') format('woff2');
-    font-weight: 300; font-style: normal;
-}
-@font-face {
-    font-family: 'SVN Gilroy';
-    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Regular.woff2') format('woff2');
+    src: url('/static/fonts/SVN-Gilroy_Regular.otf') format('opentype');
     font-weight: 400; font-style: normal;
 }
 @font-face {
     font-family: 'SVN Gilroy';
-    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Medium.woff2') format('woff2');
+    src: url('/static/fonts/SVN-Gilroy_Medium.otf') format('opentype');
     font-weight: 500; font-style: normal;
 }
 @font-face {
     font-family: 'SVN Gilroy';
-    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-SemiBold.woff2') format('woff2');
+    src: url('/static/fonts/SVN-Gilroy_SemiBold.otf') format('opentype');
     font-weight: 600; font-style: normal;
 }
 @font-face {
     font-family: 'SVN Gilroy';
-    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Bold.woff2') format('woff2');
+    src: url('/static/fonts/SVN-Gilroy_Bold.otf') format('opentype');
     font-weight: 700; font-style: normal;
+}
+@font-face {
+    font-family: 'SVN Gilroy';
+    src: url('/static/fonts/SVN-Gilroy_Heavy.otf') format('opentype');
+    font-weight: 800; font-style: normal;
 }
 
 /* Global */
@@ -1118,6 +1118,7 @@ if __name__ == "__main__":
         share=False,
         root_path="https://voice.overmind.io.vn",
         ssr_mode=False,
+        allowed_paths=[str(BASE_DIR / "static")],
         theme=gr.themes.Soft(
             primary_hue=gr.themes.colors.slate,
             secondary_hue=gr.themes.colors.gray,
