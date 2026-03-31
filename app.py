@@ -4,9 +4,30 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-import gradio as gr
-import soundfile as sf
+import numpy as np
+import torchaudio
 import torch
+import soundfile as sf
+
+
+# Monkey-patch torchaudio.load to use soundfile instead of torchcodec
+def _load_soundfile(filepath, frame_offset=0, num_frames=-1, normalize=True,
+                    channels_first=True, format=None, buffer_size=4096, backend=None):
+    data, sr = sf.read(str(filepath), dtype="float32")
+    if data.ndim == 1:
+        data = data[np.newaxis, :]  # (1, samples)
+    else:
+        data = data.T  # (channels, samples)
+    if frame_offset > 0:
+        data = data[:, frame_offset:]
+    if num_frames > 0:
+        data = data[:, :num_frames]
+    return torch.from_numpy(data), sr
+
+
+torchaudio.load = _load_soundfile
+
+import gradio as gr
 from f5_tts.api import F5TTS
 
 # Paths
