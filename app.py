@@ -510,7 +510,6 @@ WHISPER_TRANSCRIBE_OPTS = dict(
     ),
     word_timestamps=False,
     condition_on_previous_text=True,
-    batch_size=24,
 )
 
 
