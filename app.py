@@ -991,24 +991,25 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                     train_name = gr.Textbox(label="Tên giọng", placeholder="vd: MC Thời sự")
                     train_desc = gr.Textbox(label="Mô tả (tùy chọn)",
                                             placeholder="Giọng nam miền Bắc, trầm ấm...")
+                    stt_train_btn = gr.Button("Nhận dạng audio thành text", variant="secondary")
                     train_transcript = gr.Textbox(
-                        label="Transcript (tự động nhận dạng → sửa nếu sai → AI tự học)",
-                        placeholder="Upload audio ở trên → tự động điền transcript...\n"
-                                    "Sửa chỗ sai trước khi train → hệ thống tự học.",
+                        label="Transcript (bấm nút trên để nhận dạng, sửa nếu sai)",
+                        placeholder="Bấm 'Nhận dạng audio thành text' hoặc nhập thủ công...",
                         lines=5,
                     )
-                    train_auto_text = gr.State("")  # store auto text
+                    train_auto_text = gr.State("")
                     with gr.Row():
                         train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary", size="lg")
                     train_status = gr.Textbox(label="Trạng thái", interactive=False)
 
-                    # Auto-transcribe when audio uploaded
-                    def auto_transcribe_and_store(audio_path):
+                    def transcribe_for_training(audio_path):
+                        if not audio_path:
+                            return "", "Upload audio trước.", ""
                         text, status = auto_transcribe(audio_path)
-                        return text, status, text  # 3rd = store for correction
+                        return text, status, text
 
-                    train_audio.change(
-                        fn=auto_transcribe_and_store,
+                    stt_train_btn.click(
+                        fn=transcribe_for_training,
                         inputs=[train_audio],
                         outputs=[train_transcript, train_status, train_auto_text],
                     )
