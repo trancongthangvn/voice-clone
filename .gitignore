@@ -8,3 +8,11 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+engines/GPT-SoVITS/
+voice_library/
+temp/
+training_output/
+history.json
+dataset/
+stt_dataset/
+*.log
