@@ -1,12 +1,14 @@
 #!/bin/bash
-# Train a voice using GPT-SoVITS
+# Train a voice using GPT-SoVITS v2
 # Usage: train_voice.sh <voice_id> <voice_dir>
+set -e
 
-VOICE_ID=$1
-VOICE_DIR=$2
+VOICE_ID="$1"
+VOICE_DIR="$2"
 BASE_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 SOVITS_DIR="$BASE_DIR/engines/GPT-SoVITS"
 VENV="$SOVITS_DIR/venv/bin/activate"
+PRETRAINED="$SOVITS_DIR/GPT_SoVITS/pretrained_models"
 
 echo "=== Training voice: $VOICE_ID ==="
 echo "Voice dir: $VOICE_DIR"
@@ -14,75 +16,121 @@ echo "Start time: $(date)"
 
 source "$VENV"
 cd "$SOVITS_DIR"
-
 export PYTHONPATH="$SOVITS_DIR:$PYTHONPATH"
 
-# Step 1: Audio preprocessing - extract semantic tokens
-echo "=== Step 1: Preprocessing audio ==="
-python3 GPT_SoVITS/prepare_datasets/1-get-text.py \
-    --inp_text "$VOICE_DIR/train.list" \
-    --exp_name "$VOICE_ID" \
-    --gpu_numbers "0" \
-    --pretrained_s2G_path "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth" 2>&1
+OPT_DIR="$SOVITS_DIR/logs/$VOICE_ID"
+mkdir -p "$OPT_DIR"
 
-# Step 2: Extract SSL features
-echo "=== Step 2: Extract SSL features ==="
-python3 GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py \
-    --inp_text "$VOICE_DIR/train.list" \
-    --exp_name "$VOICE_ID" 2>&1
+# =========================================
+# Step 1: Get text (phoneme extraction)
+# =========================================
+echo "=== Step 1/5: Text processing ==="
+export inp_text="$VOICE_DIR/train.list"
+export inp_wav_dir=""
+export exp_name="$VOICE_ID"
+export i_part="0"
+export all_parts="1"
+export _CUDA_VISIBLE_DEVICES="0"
+export opt_dir="$OPT_DIR"
+export bert_pretrained_dir="$PRETRAINED/chinese-roberta-wwm-ext-large"
+export is_half="True"
+export version="v2"
 
-# Step 3: Extract semantic tokens
-echo "=== Step 3: Extract semantic tokens ==="
-python3 GPT_SoVITS/prepare_datasets/3-get-semantic.py \
-    --inp_text "$VOICE_DIR/train.list" \
-    --exp_name "$VOICE_ID" 2>&1
+python3 GPT_SoVITS/prepare_datasets/1-get-text.py 2>&1
+echo "Step 1 done."
 
-# Step 4: Train SoVITS
-echo "=== Step 4: Train SoVITS ==="
-python3 GPT_SoVITS/s2_train.py \
-    --config_file "GPT_SoVITS/configs/s2.json" \
-    --exp_name "$VOICE_ID" \
-    --gpu "0" \
-    --pretrained_s2G "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth" \
-    --pretrained_s2D "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2D2333k.pth" \
-    --batch_size 4 \
-    --total_epoch 8 \
-    --save_every_epoch 4 2>&1
+# =========================================
+# Step 2: Extract HuBERT features + resample to 32k
+# =========================================
+echo "=== Step 2/5: HuBERT feature extraction ==="
+export cnhubert_base_dir="$PRETRAINED/chinese-hubert-base"
 
-# Step 5: Train GPT
-echo "=== Step 5: Train GPT ==="
-python3 GPT_SoVITS/s1_train.py \
-    --config_file "GPT_SoVITS/configs/s1longer.yaml" \
-    --exp_name "$VOICE_ID" \
-    --gpu "0" \
-    --pretrained_s1 "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt" \
-    --batch_size 4 \
-    --total_epoch 15 \
-    --save_every_epoch 5 2>&1
+python3 GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py 2>&1
+echo "Step 2 done."
 
-# Step 6: Copy trained models to voice dir
-echo "=== Step 6: Copying models ==="
-LATEST_GPT=$(ls -t "logs/$VOICE_ID/"*.ckpt 2>/dev/null | head -1)
-LATEST_SOVITS=$(ls -t "logs/$VOICE_ID/"*.pth 2>/dev/null | head -1)
+# =========================================
+# Step 3: Get semantic tokens
+# =========================================
+echo "=== Step 3/5: Semantic token extraction ==="
+export pretrained_s2G="$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth"
+export s2config_path="$SOVITS_DIR/GPT_SoVITS/configs/s2.json"
+
+python3 GPT_SoVITS/prepare_datasets/3-get-semantic.py 2>&1
+echo "Step 3 done."
+
+# =========================================
+# Step 4: Train SoVITS (s2)
+# =========================================
+echo "=== Step 4/5: Train SoVITS ==="
+
+# Create s2 training config
+S2_CONFIG="$OPT_DIR/s2_config.json"
+python3 -c "
+import json
+with open('$SOVITS_DIR/GPT_SoVITS/configs/s2.json') as f:
+    cfg = json.load(f)
+cfg['train']['epochs'] = 8
+cfg['train']['batch_size'] = 4
+cfg['train']['save_every_epoch'] = 4
+cfg['train']['exp_dir'] = '$OPT_DIR'
+cfg['data']['exp_dir'] = '$OPT_DIR'
+cfg['model']['pretrained'] = '$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth'
+cfg['s2_ckpt_dir'] = '$OPT_DIR'
+with open('$S2_CONFIG', 'w') as f:
+    json.dump(cfg, f, indent=2)
+print('s2 config written')
+" 2>&1
+
+python3 GPT_SoVITS/s2_train.py -c "$S2_CONFIG" 2>&1 || echo "Warning: s2 training had issues"
+echo "Step 4 done."
+
+# =========================================
+# Step 5: Train GPT (s1)
+# =========================================
+echo "=== Step 5/5: Train GPT ==="
+
+# Create s1 training config
+S1_CONFIG="$OPT_DIR/s1_config.yaml"
+python3 -c "
+import yaml
+with open('$SOVITS_DIR/GPT_SoVITS/configs/s1longer.yaml') as f:
+    cfg = yaml.safe_load(f)
+cfg['train']['epochs'] = 15
+cfg['train']['batch_size'] = 4
+cfg['train']['save_every_epoch'] = 5
+cfg['output_dir'] = '$OPT_DIR'
+cfg['pretrained_s1'] = '$PRETRAINED/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt'
+with open('$S1_CONFIG', 'w') as f:
+    yaml.dump(cfg, f)
+print('s1 config written')
+" 2>&1
+
+python3 GPT_SoVITS/s1_train.py -c "$S1_CONFIG" 2>&1 || echo "Warning: s1 training had issues"
+echo "Step 5 done."
+
+# =========================================
+# Copy trained models
+# =========================================
+echo "=== Copying final models ==="
+
+LATEST_GPT=$(find "$OPT_DIR" -name "*.ckpt" -newer "$VOICE_DIR/meta.json" 2>/dev/null | sort -t= -k2 -n | tail -1)
+LATEST_SOVITS=$(find "$OPT_DIR" -name "*.pth" -newer "$VOICE_DIR/meta.json" 2>/dev/null | sort | tail -1)
 
 if [ -n "$LATEST_GPT" ] && [ -n "$LATEST_SOVITS" ]; then
     cp "$LATEST_GPT" "$VOICE_DIR/gpt.ckpt"
     cp "$LATEST_SOVITS" "$VOICE_DIR/sovits.pth"
 
-    # Update status to ready
     python3 -c "
 import json
 meta_file = '$VOICE_DIR/meta.json'
 with open(meta_file) as f:
     meta = json.load(f)
 meta['status'] = 'ready'
-meta['gpt_model'] = 'gpt.ckpt'
-meta['sovits_model'] = 'sovits.pth'
 with open(meta_file, 'w') as f:
     json.dump(meta, f, ensure_ascii=False, indent=2)
-print('Voice training complete!')
+print('Status: ready')
 "
-    echo "=== Training complete! ==="
+    echo "=== Training COMPLETE! ==="
 else
     echo "=== Training FAILED - no checkpoint found ==="
     python3 -c "

@@ -69,13 +69,17 @@ def finetune(version, epochs=100, batch_size=1600, lr=1e-5):
 
     cmd = [
         sys.executable, "-m", "f5_tts.train.finetune_cli",
-        "--exp_name", version,
+        "--exp_name", "F5TTS_Base",
         "--dataset_name", str(DATASET_DIR),
         "--pretrain", base_ckpt,
+        "--finetune",
+        "--tokenizer", "custom",
+        "--tokenizer_path", str(BASE_MODEL_DIR / "vocab.txt"),
         "--epochs", str(epochs),
         "--batch_size_per_gpu", str(batch_size),
         "--learning_rate", str(lr),
         "--save_per_updates", "500",
+        "--logger", "tensorboard",
     ]
 
     print(f"\nRunning: {' '.join(cmd)}\n")

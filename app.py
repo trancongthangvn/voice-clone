@@ -91,16 +91,22 @@ def load_model(force_reload=False):
 # ============================================================
 
 def load_history():
-    if HISTORY_FILE.exists():
-        return json.loads(HISTORY_FILE.read_text())
+    try:
+        if HISTORY_FILE.exists():
+            return json.loads(HISTORY_FILE.read_text())
+    except Exception:
+        pass
     return []
 
 
 def save_history_entry(entry):
-    history = load_history()
-    history.insert(0, entry)
-    history = history[:100]
-    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+    try:
+        history = load_history()
+        history.insert(0, entry)
+        history = history[:100]
+        HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -110,20 +116,23 @@ def save_history_entry(entry):
 def collect_training_data(audio_path, transcript):
     if not audio_path:
         return
-    sample_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
-    dest_audio = DATASET_DIR / f"{sample_id}.wav"
-    data, sr = sf.read(str(audio_path))
-    duration = len(data) / sr
-    if duration < 1 or duration > 60:
-        return
-    sf.write(str(dest_audio), data, sr)
-    meta = {
-        "id": sample_id, "audio": dest_audio.name,
-        "transcript": transcript or "", "duration": round(duration, 2),
-        "collected_at": datetime.now().isoformat(),
-    }
-    with open(DATASET_DIR / "metadata.jsonl", "a") as f:
-        f.write(json.dumps(meta, ensure_ascii=False) + "\n")
+    try:
+        sample_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
+        dest_audio = DATASET_DIR / f"{sample_id}.wav"
+        data, sr = sf.read(str(audio_path))
+        duration = len(data) / sr
+        if duration < 1 or duration > 60:
+            return
+        sf.write(str(dest_audio), data, sr)
+        meta = {
+            "id": sample_id, "audio": dest_audio.name,
+            "transcript": transcript or "", "duration": round(duration, 2),
+            "collected_at": datetime.now().isoformat(),
+        }
+        with open(DATASET_DIR / "metadata.jsonl", "a") as f:
+            f.write(json.dumps(meta, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -238,13 +247,13 @@ def library_tts(voice_selection, gen_text, speed):
     if not voice_selection:
         return None, "Vui lòng chọn giọng."
 
-    # Extract voice id from selection
+    # Extract voice id from selection (single fetch to avoid race condition)
     voices = get_library_voices()
-    voice_idx = get_library_voice_choices().index(voice_selection) if voice_selection in get_library_voice_choices() else -1
-    if voice_idx < 0:
+    choices = [f"{v['name']} ({v.get('status', '?')})" for v in voices]
+    if voice_selection not in choices:
         return None, "Giọng không hợp lệ."
 
-    voice = voices[voice_idx]
+    voice = voices[choices.index(voice_selection)]
     voice_dir = VOICE_LIBRARY_DIR / voice["id"]
 
     if voice.get("status") != "ready":
@@ -305,20 +314,30 @@ def train_new_voice(audio_file, voice_name, description, transcript):
 
     voice_id = voice_name.strip().lower().replace(" ", "_")
     voice_id = re.sub(r'[^a-z0-9_]', '', voice_id)
-    voice_dir = VOICE_LIBRARY_DIR / voice_id
+    if not voice_id:
+        return "Tên giọng không hợp lệ (cần chứa ký tự a-z, 0-9)."
 
+    voice_dir = VOICE_LIBRARY_DIR / voice_id
     if voice_dir.exists():
         return f"Giọng '{voice_id}' đã tồn tại. Chọn tên khác."
 
-    voice_dir.mkdir(parents=True)
+    try:
+        data, sr = sf.read(audio_file)
+    except Exception as e:
+        return f"Không đọc được file audio: {e}"
 
-    # Copy audio
-    data, sr = sf.read(audio_file)
+    duration = len(data) / sr
+    if duration < 10:
+        return f"Audio quá ngắn ({duration:.0f}s). Cần ít nhất 10 giây."
+    if duration > 600:
+        return f"Audio quá dài ({duration:.0f}s). Tối đa 10 phút."
+
+    voice_dir.mkdir(parents=True)
     sf.write(str(voice_dir / "raw_audio.wav"), data, sr)
 
-    # Save ref audio (first 15s)
-    ref_duration = min(len(data), sr * 15)
-    sf.write(str(voice_dir / "ref.wav"), data[:ref_duration], sr)
+    # Save ref audio (first 15s for inference)
+    ref_samples = min(len(data), sr * 15)
+    sf.write(str(voice_dir / "ref.wav"), data[:ref_samples], sr)
 
     # Save metadata
     meta = {
@@ -327,25 +346,28 @@ def train_new_voice(audio_file, voice_name, description, transcript):
         "transcript": transcript.strip(),
         "created_at": datetime.now().isoformat(),
         "status": "training",
-        "duration": round(len(data) / sr, 1),
+        "duration": round(duration, 1),
     }
     (voice_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
-    # Create training list
+    # Create training list (use "auto" for language detection)
     (voice_dir / "train.list").write_text(
-        f"{voice_dir / 'raw_audio.wav'}|{voice_name}|vi|{transcript.strip()}\n"
+        f"{voice_dir / 'raw_audio.wav'}|{voice_name}|auto|{transcript.strip()}\n"
     )
 
-    # Start training in background
+    # Start training in background (proper resource handling)
     train_script = BASE_DIR / "engines" / "train_voice.sh"
-    log_file = open(voice_dir / "train.log", "w")
-    subprocess.Popen(
-        ["bash", str(train_script), voice_id, str(voice_dir)],
-        stdout=log_file, stderr=subprocess.STDOUT,
-        cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
-    )
+    if not train_script.exists():
+        return "Lỗi: không tìm thấy script huấn luyện."
 
-    return f"Đang huấn luyện giọng '{voice_name}'... Kiểm tra trạng thái ở tab Thư viện."
+    with open(voice_dir / "train.log", "w") as log_file:
+        subprocess.Popen(
+            ["bash", str(train_script), voice_id, str(voice_dir)],
+            stdout=log_file, stderr=subprocess.STDOUT,
+            cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
+        )
+
+    return f"Đang huấn luyện giọng '{voice_name}' ({duration:.0f}s audio)... Kiểm tra ở tab Thư viện."
 
 
 def get_training_log(voice_selection):
@@ -398,10 +420,18 @@ def get_dataset_stats():
     meta_file = DATASET_DIR / "metadata.jsonl"
     if not meta_file.exists():
         return "Chưa có dữ liệu training."
-    lines = meta_file.read_text().strip().split("\n")
+    lines = [l for l in meta_file.read_text().strip().split("\n") if l.strip()]
     total = len(lines)
-    total_duration = sum(json.loads(l).get("duration", 0) for l in lines)
-    with_transcript = sum(1 for l in lines if json.loads(l).get("transcript"))
+    total_duration = 0
+    with_transcript = 0
+    for l in lines:
+        try:
+            entry = json.loads(l)
+            total_duration += entry.get("duration", 0)
+            if entry.get("transcript"):
+                with_transcript += 1
+        except json.JSONDecodeError:
+            continue
     lib_voices = get_library_voices()
     ready = sum(1 for v in lib_voices if v.get("status") == "ready")
     training = sum(1 for v in lib_voices if v.get("status") == "training")
