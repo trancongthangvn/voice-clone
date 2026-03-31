@@ -469,6 +469,115 @@ def switch_model(version):
 
 
 # ============================================================
+# Speech-to-Text (Whisper)
+# ============================================================
+
+whisper_model = None
+
+
+def load_whisper():
+    global whisper_model
+    if whisper_model is None:
+        from faster_whisper import WhisperModel
+        print("Loading Whisper model (large-v3)...")
+        whisper_model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+        print("Whisper loaded.")
+    return whisper_model
+
+
+def transcribe_audio(audio_path, language):
+    if not audio_path:
+        return "", "Vui lòng upload audio."
+    try:
+        model = load_whisper()
+        lang = language if language and language != "Auto" else None
+        segments, info = model.transcribe(
+            audio_path,
+            language=lang,
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+        )
+        full_text = ""
+        segment_details = []
+        for seg in segments:
+            full_text += seg.text + " "
+            start = f"{int(seg.start//60):02d}:{seg.start%60:05.2f}"
+            end = f"{int(seg.end//60):02d}:{seg.end%60:05.2f}"
+            segment_details.append(f"[{start} → {end}] {seg.text.strip()}")
+
+        details = (
+            f"**Ngôn ngữ:** {info.language} (confidence: {info.language_probability:.0%})\n"
+            f"**Thời lượng:** {info.duration:.1f}s\n\n"
+            + "\n".join(segment_details)
+        )
+        return full_text.strip(), details
+    except Exception as e:
+        return "", f"Lỗi: {str(e)}"
+
+
+# ============================================================
+# Training Dashboard
+# ============================================================
+
+def get_all_training_status():
+    """Get status of all voices in library."""
+    voices = get_library_voices()
+    if not voices:
+        return "Chưa có giọng nào trong thư viện."
+    lines = []
+    for v in voices:
+        status = v.get("status", "?")
+        icon = {"ready": "🟢", "training": "🟡", "failed": "🔴"}.get(status, "⚪")
+        duration = v.get("duration", 0)
+        created = v.get("created_at", "")[:10]
+        lines.append(
+            f"{icon} **{v['name']}** | {status} | {duration}s audio | {created}"
+        )
+    return "\n\n".join(lines)
+
+
+def get_gpu_status():
+    """Get GPU usage info."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        )
+        parts = result.stdout.strip().split(", ")
+        if len(parts) >= 4:
+            return (
+                f"**GPU Usage:** {parts[0]}%\n"
+                f"**VRAM:** {parts[1]} / {parts[2]} MB\n"
+                f"**Temperature:** {parts[3]}°C"
+            )
+    except Exception:
+        pass
+    return "Không lấy được thông tin GPU."
+
+
+def get_disk_status():
+    """Get disk usage."""
+    try:
+        import shutil as sh
+        total, used, free = sh.disk_usage("/")
+        models_size = sum(f.stat().st_size for f in MODELS_DIR.rglob("*") if f.is_file()) / (1024**3)
+        lib_size = sum(f.stat().st_size for f in VOICE_LIBRARY_DIR.rglob("*") if f.is_file()) / (1024**3) if VOICE_LIBRARY_DIR.exists() else 0
+        return (
+            f"**Disk:** {used//(1024**3)}GB / {total//(1024**3)}GB (free: {free//(1024**3)}GB)\n"
+            f"**Models:** {models_size:.1f} GB\n"
+            f"**Voice Library:** {lib_size:.1f} GB"
+        )
+    except Exception:
+        return "Không lấy được thông tin disk."
+
+
+def refresh_dashboard():
+    return get_all_training_status(), get_gpu_status(), get_disk_status(), get_dataset_stats()
+
+
+# ============================================================
 # BUILD UI
 # ============================================================
 
@@ -552,81 +661,114 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                 lambda: gr.Dropdown(choices=get_library_voice_choices()),
                 outputs=[lib_voice_dd])
 
-        # === Tab 3: Huấn luyện giọng mới ===
-        with gr.Tab("Huấn luyện giọng"):
-            gr.Markdown(
-                "### Thêm giọng mới vào thư viện\n"
-                "Upload **1-3 phút** audio giọng nói sạch + transcript chính xác. "
-                "Hệ thống sẽ huấn luyện giọng bằng GPT-SoVITS (~10-20 phút trên GPU)."
-            )
+        # === Tab 3: Voice to Text (STT) ===
+        with gr.Tab("Voice to Text"):
+            gr.Markdown("Chuyển giọng nói thành văn bản (Whisper AI)")
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
+                    stt_audio = gr.Audio(
+                        label="Upload audio cần chuyển thành text",
+                        type="filepath", sources=["upload", "microphone"],
+                    )
+                    stt_lang = gr.Dropdown(
+                        label="Ngôn ngữ",
+                        choices=["Auto", "vi", "en", "zh", "ja", "ko", "fr"],
+                        value="Auto", interactive=True,
+                    )
+                    stt_btn = gr.Button("Chuyển thành text", variant="primary", size="lg")
+                with gr.Column(scale=1):
+                    stt_result = gr.Textbox(label="Kết quả text", lines=8, interactive=True)
+                    stt_details = gr.Markdown(label="Chi tiết")
+
+            stt_btn.click(transcribe_audio, [stt_audio, stt_lang], [stt_result, stt_details])
+
+            gr.Markdown("---")
+            gr.Markdown(
+                "**Mẹo:** Dùng kết quả text làm transcript khi huấn luyện giọng mới. "
+                "Copy text ở trên → paste vào tab Training Dashboard."
+            )
+
+        # === Tab 4: Training Dashboard ===
+        with gr.Tab("Training Dashboard"):
+            with gr.Row():
+                # Left: Train new voice
+                with gr.Column(scale=1):
+                    gr.Markdown("### Huấn luyện giọng mới")
                     train_audio = gr.Audio(label="Audio giọng nói (1-3 phút, sạch)",
                                            type="filepath", sources=["upload"])
                     train_name = gr.Textbox(label="Tên giọng", placeholder="vd: MC Thời sự")
-                    train_desc = gr.Textbox(label="Mô tả (tùy chọn)", placeholder="Giọng nam miền Bắc...")
+                    train_desc = gr.Textbox(label="Mô tả (tùy chọn)",
+                                            placeholder="Giọng nam miền Bắc, trầm ấm...")
                     train_transcript = gr.Textbox(
-                        label="Transcript (BẮT BUỘC - nội dung audio đang nói)",
-                        placeholder="Nhập chính xác nội dung audio...",
-                        lines=4,
+                        label="Transcript (BẮT BUỘC)",
+                        placeholder="Nhập chính xác nội dung audio đang nói...\n"
+                                    "Tip: dùng tab Voice to Text để tự động tạo transcript",
+                        lines=5,
                     )
-                    train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary")
+                    with gr.Row():
+                        train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary", size="lg")
                     train_status = gr.Textbox(label="Trạng thái", interactive=False)
 
-                with gr.Column():
-                    gr.Markdown("### Trạng thái huấn luyện")
-                    log_voice_dd = gr.Dropdown(
-                        label="Chọn giọng", choices=get_library_voice_choices(), interactive=True)
-                    log_refresh = gr.Button("Xem log", size="sm")
-                    train_log = gr.Textbox(label="Training log", lines=15, interactive=False)
+                # Right: Monitor & Status
+                with gr.Column(scale=1):
+                    gr.Markdown("### Bảng điều khiển")
+                    with gr.Row():
+                        gpu_status = gr.Markdown(value=get_gpu_status)
+                        disk_status = gr.Markdown(value=get_disk_status)
+                    dash_stats = gr.Markdown(value=get_dataset_stats)
+                    dash_refresh = gr.Button("Refresh", size="sm")
 
+                    gr.Markdown("### Trạng thái tất cả giọng")
+                    all_voices_status = gr.Markdown(value=get_all_training_status)
+
+            gr.Markdown("---")
+            with gr.Row():
+                # Training log
+                with gr.Column():
+                    gr.Markdown("### Training Log")
+                    log_voice_dd = gr.Dropdown(
+                        label="Chọn giọng xem log",
+                        choices=get_library_voice_choices(), interactive=True)
+                    log_refresh = gr.Button("Xem log", size="sm")
+                    train_log = gr.Textbox(label="Log", lines=12, interactive=False)
+
+                # Quick actions
+                with gr.Column():
+                    gr.Markdown("### Quản lý nhanh")
+                    with gr.Accordion("Giọng nhanh (F5-TTS)", open=False):
+                        with gr.Row():
+                            voice_upload = gr.Audio(label="Audio", type="filepath",
+                                                    sources=["upload", "microphone"])
+                            voice_name = gr.Textbox(label="Tên", placeholder="vd: giang_vien")
+                        save_btn = gr.Button("Lưu giọng nhanh", variant="primary", size="sm")
+                        mgmt_status = gr.Textbox(label="Trạng thái", interactive=False)
+                        save_btn.click(save_voice, [voice_upload, voice_name], [mgmt_status])
+
+                    with gr.Accordion("Xóa giọng", open=False):
+                        del_voice_dd = gr.Dropdown(label="Giọng nhanh (F5-TTS)",
+                                                   choices=get_saved_voices(), interactive=True)
+                        del_btn = gr.Button("Xóa", variant="stop", size="sm")
+                        del_lib_dd = gr.Dropdown(label="Thư viện (GPT-SoVITS)",
+                                                 choices=get_library_voice_choices(), interactive=True)
+                        del_lib_btn = gr.Button("Xóa", variant="stop", size="sm")
+                        del_status = gr.Textbox(label="Trạng thái", interactive=False)
+                        del_btn.click(delete_voice, [del_voice_dd], [del_status, del_voice_dd])
+                        del_lib_btn.click(delete_library_voice, [del_lib_dd], [del_status, del_lib_dd])
+
+                    with gr.Accordion("F5-TTS Model Version", open=False):
+                        model_dd = gr.Dropdown(label="Version", choices=get_model_versions(),
+                                               value=CURRENT_MODEL_VERSION, interactive=True)
+                        switch_btn = gr.Button("Chuyển model", variant="primary", size="sm")
+                        model_status = gr.Textbox(label="Trạng thái", interactive=False)
+                        switch_btn.click(switch_model, [model_dd], [model_status])
+
+            # Wire up training
             train_btn.click(train_new_voice,
                             [train_audio, train_name, train_desc, train_transcript],
                             [train_status])
             log_refresh.click(get_training_log, [log_voice_dd], [train_log])
-
-        # === Tab 4: Quản lý ===
-        with gr.Tab("Quản lý"):
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### Giọng nhanh (F5-TTS)")
-                    with gr.Row():
-                        voice_upload = gr.Audio(label="Upload audio", type="filepath",
-                                                sources=["upload", "microphone"])
-                        with gr.Column():
-                            voice_name = gr.Textbox(label="Tên giọng", placeholder="vd: giang_vien")
-                            save_btn = gr.Button("Lưu", variant="primary")
-                    with gr.Row():
-                        del_voice_dd = gr.Dropdown(label="Xóa giọng", choices=get_saved_voices(), interactive=True)
-                        del_btn = gr.Button("Xóa", variant="stop", size="sm")
-                    mgmt_status = gr.Textbox(label="Trạng thái", interactive=False)
-
-                    save_btn.click(save_voice, [voice_upload, voice_name], [mgmt_status])
-                    del_btn.click(delete_voice, [del_voice_dd], [mgmt_status, del_voice_dd])
-
-                with gr.Column():
-                    gr.Markdown("### Thư viện giọng (GPT-SoVITS)")
-                    del_lib_dd = gr.Dropdown(label="Xóa giọng thư viện",
-                                             choices=get_library_voice_choices(), interactive=True)
-                    del_lib_btn = gr.Button("Xóa", variant="stop", size="sm")
-                    del_lib_status = gr.Textbox(label="Trạng thái", interactive=False)
-                    del_lib_btn.click(delete_library_voice, [del_lib_dd], [del_lib_status, del_lib_dd])
-
-            gr.Markdown("---")
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### F5-TTS Model")
-                    model_dd = gr.Dropdown(label="Version", choices=get_model_versions(),
-                                           value=CURRENT_MODEL_VERSION, interactive=True)
-                    switch_btn = gr.Button("Chuyển model", variant="primary")
-                    model_status = gr.Textbox(label="Trạng thái", interactive=False)
-                    switch_btn.click(switch_model, [model_dd], [model_status])
-
-                with gr.Column():
-                    gr.Markdown("### Thống kê")
-                    stats_md = gr.Markdown(value=get_dataset_stats)
-                    stats_refresh = gr.Button("Refresh")
-                    stats_refresh.click(get_dataset_stats, outputs=[stats_md])
+            dash_refresh.click(refresh_dashboard,
+                               outputs=[all_voices_status, gpu_status, disk_status, dash_stats])
 
         # === Tab 5: Lịch sử ===
         with gr.Tab("Lịch sử"):
