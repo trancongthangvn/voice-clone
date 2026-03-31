@@ -49,7 +49,7 @@ def prepare_dataset():
     return str(train_file)
 
 
-def finetune(version, epochs=100, batch_size=1600, lr=1e-5):
+def finetune(version, epochs=100, batch_size=3200, lr=1e-5):
     """Run fine-tuning using F5-TTS CLI."""
     train_file = prepare_dataset()
     output_dir = MODELS_DIR / version

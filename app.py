@@ -477,13 +477,16 @@ whisper_model = None
 WHISPER_TRANSCRIBE_OPTS = dict(
     beam_size=5,
     best_of=5,
+    patience=1.5,
     vad_filter=True,
     vad_parameters=dict(
-        min_silence_duration_ms=300,
+        min_silence_duration_ms=250,
         speech_pad_ms=200,
+        threshold=0.4,
     ),
     word_timestamps=False,
     condition_on_previous_text=True,
+    batch_size=24,
 )
 
 
@@ -497,7 +500,7 @@ def load_whisper():
             device="cuda",
             compute_type="float16",
             num_workers=4,
-            cpu_threads=8,
+            cpu_threads=16,
         )
         print("Whisper loaded.")
     return whisper_model
@@ -818,10 +821,17 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
 
 
 if __name__ == "__main__":
+    import torch
+    # GPU optimization
+    torch.backends.cudnn.benchmark = True
+    if hasattr(torch, 'set_float32_matmul_precision'):
+        torch.set_float32_matmul_precision('high')
+
     print("Loading F5-TTS model...")
     load_model()
     print("Pre-loading Whisper model...")
     load_whisper()
+    print("All models loaded. GPU ready.")
     print("Starting server...")
     app.launch(
         server_name="127.0.0.1",

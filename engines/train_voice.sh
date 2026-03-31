@@ -18,6 +18,11 @@ source "$VENV"
 cd "$SOVITS_DIR"
 export PYTHONPATH="$SOVITS_DIR:$SOVITS_DIR/GPT_SoVITS:$PYTHONPATH"
 
+# GPU optimization
+export CUDA_VISIBLE_DEVICES="0"
+export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+export TOKENIZERS_PARALLELISM="true"
+
 OPT_DIR="$SOVITS_DIR/logs/$VOICE_ID"
 mkdir -p "$OPT_DIR"
 
@@ -69,9 +74,12 @@ python3 -c "
 import json
 with open('$SOVITS_DIR/GPT_SoVITS/configs/s2.json') as f:
     cfg = json.load(f)
-cfg['train']['epochs'] = 8
-cfg['train']['batch_size'] = 4
-cfg['train']['save_every_epoch'] = 4
+cfg['train']['epochs'] = 10
+cfg['train']['batch_size'] = 12
+cfg['train']['save_every_epoch'] = 5
+cfg['train']['fp16_run'] = True
+cfg['train']['num_workers'] = 4
+cfg['train']['pin_memory'] = True
 cfg['train']['exp_dir'] = '$OPT_DIR'
 cfg['data']['exp_dir'] = '$OPT_DIR'
 cfg['model']['pretrained'] = '$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth'
@@ -95,9 +103,11 @@ python3 -c "
 import yaml
 with open('$SOVITS_DIR/GPT_SoVITS/configs/s1longer.yaml') as f:
     cfg = yaml.safe_load(f)
-cfg['train']['epochs'] = 15
-cfg['train']['batch_size'] = 4
+cfg['train']['epochs'] = 20
+cfg['train']['batch_size'] = 12
 cfg['train']['save_every_epoch'] = 5
+cfg['train']['precision'] = '16-mixed'
+cfg['train']['num_workers'] = 4
 cfg['output_dir'] = '$OPT_DIR'
 cfg['pretrained_s1'] = '$PRETRAINED/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt'
 with open('$S1_CONFIG', 'w') as f:
