@@ -1,5 +1,5 @@
 torch
 torchaudio
-f5-tts
+git+https://github.com/nguyenthienhy/F5-TTS-Vietnamese.git
 gradio
 soundfile
