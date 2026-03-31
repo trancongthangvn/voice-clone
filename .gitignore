@@ -16,3 +16,4 @@ history.json
 dataset/
 stt_dataset/
 *.log
+logs/

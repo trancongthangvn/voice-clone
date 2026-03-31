@@ -7,3 +7,4 @@ numpy
 faster-whisper
 transformers
 datasets
+psutil

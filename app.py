@@ -11,6 +11,13 @@ import torchaudio
 import torch
 import soundfile as sf
 
+import psutil
+from infrastructure import (
+    models, gpu_queue, logger, health_check, get_gpu_info,
+    run_gpu_inference, check_gpu_memory, preprocess_audio,
+    validate_audio, start_memory_monitor,
+)
+
 
 # Monkey-patch torchaudio.load to use soundfile instead of torchcodec
 def _load_soundfile(filepath, frame_offset=0, num_frames=-1, normalize=True,
@@ -47,8 +54,7 @@ WHISPER_MODELS_DIR = MODELS_DIR / "whisper"
 for d in [VOICES_DIR, OUTPUT_DIR, DATASET_DIR, VOICE_LIBRARY_DIR, STT_DATASET_DIR, WHISPER_MODELS_DIR]:
     d.mkdir(exist_ok=True)
 
-# Global state
-tts_model = None
+# Model version tracking
 CURRENT_MODEL_VERSION = "v1-base"
 
 
@@ -66,31 +72,27 @@ def get_active_model_path():
     return MODEL_DIR / "model_last.pt", "v1-base"
 
 
-def load_model(force_reload=False):
-    global tts_model, CURRENT_MODEL_VERSION
+def _load_tts_impl():
+    """Internal TTS loader - called by ModelManager."""
     ckpt_file, version = get_active_model_path()
-    if tts_model is not None and not force_reload and version == CURRENT_MODEL_VERSION:
-        return tts_model
-    # Free old model VRAM before loading new
-    if tts_model is not None:
-        del tts_model
-        tts_model = None
-        torch.cuda.empty_cache()
     vocab_file = MODEL_DIR / "vocab.txt"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     if ckpt_file.exists():
-        print(f"Loading model {version} from {ckpt_file}")
-        tts_model = F5TTS(
-            model="F5TTS_Base",
-            ckpt_file=str(ckpt_file),
-            vocab_file=str(vocab_file),
-            device="cuda" if torch.cuda.is_available() else "cpu",
-        )
-        CURRENT_MODEL_VERSION = version
+        m = F5TTS(model="F5TTS_Base", ckpt_file=str(ckpt_file),
+                  vocab_file=str(vocab_file), device=device)
     else:
-        print("Vietnamese model not found, using default")
-        tts_model = F5TTS(device="cuda" if torch.cuda.is_available() else "cpu")
-        CURRENT_MODEL_VERSION = "default"
-    return tts_model
+        m = F5TTS(device=device)
+        version = "default"
+    return m, version
+
+
+def load_model(force_reload=False):
+    global CURRENT_MODEL_VERSION
+    _, target_version = get_active_model_path()
+    model, version = models.get_tts(_load_tts_impl, force_reload=force_reload,
+                                     target_version=target_version)
+    CURRENT_MODEL_VERSION = version
+    return model
 
 
 # ============================================================
@@ -191,16 +193,22 @@ def clone_voice_f5(audio_input, ref_text, gen_text, saved_voice, speed):
         return None, "Vui lòng upload audio mẫu hoặc chọn giọng đã lưu."
 
     collect_training_data(ref_audio, ref_text)
-    model = load_model()
     output_path = OUTPUT_DIR / f"{uuid.uuid4().hex}.wav"
 
-    try:
-        wav, sr, _ = model.infer(
+    def _do_inference():
+        ok, msg = check_gpu_memory(min_free_mb=1500)
+        if not ok:
+            raise RuntimeError(msg)
+        model = load_model()
+        return model.infer(
             ref_file=ref_audio,
             ref_text=ref_text if ref_text and ref_text.strip() else "",
             gen_text=gen_text.strip(),
             speed=speed,
         )
+
+    try:
+        wav, sr, _ = gpu_queue.submit(_do_inference, timeout=200)
         sf.write(str(output_path), wav, sr)
         save_history_entry({
             "time": datetime.now().strftime("%d/%m %H:%M"),
@@ -212,6 +220,7 @@ def clone_voice_f5(audio_input, ref_text, gen_text, saved_voice, speed):
         })
         return str(output_path), f"Thành công! (F5-TTS {CURRENT_MODEL_VERSION})"
     except Exception as e:
+        logger.error(f"F5-TTS inference failed: {e}")
         return None, f"Lỗi: {str(e)}"
 
 
@@ -339,18 +348,14 @@ def train_new_voice(audio_file, voice_name, description, transcript, auto_transc
     if voice_dir.exists():
         return f"Giọng '{voice_id}' đã tồn tại. Chọn tên khác."
 
-    try:
-        data, sr = sf.read(audio_file)
-    except Exception as e:
-        return f"Không đọc được file audio: {e}"
-
-    duration = len(data) / sr
-    if duration < 10:
-        return f"Audio quá ngắn ({duration:.0f}s). Cần ít nhất 10 giây."
-    if duration > 600:
-        return f"Audio quá dài ({duration:.0f}s). Tối đa 10 phút."
+    info, msg = validate_audio(audio_file, min_duration=10, max_duration=600)
+    if info is None:
+        return msg
 
     voice_dir.mkdir(parents=True)
+
+    # Preprocess audio (normalize, mono, trim silence)
+    data, sr = preprocess_audio(audio_file)
     sf.write(str(voice_dir / "raw_audio.wav"), data, sr)
 
     # Save ref audio (first 15s for inference)
@@ -378,13 +383,15 @@ def train_new_voice(audio_file, voice_name, description, transcript, auto_transc
     if not train_script.exists():
         return "Lỗi: không tìm thấy script huấn luyện."
 
-    log_file = open(voice_dir / "train.log", "w")
+    # Start training subprocess (daemonized, log to file)
     subprocess.Popen(
         ["bash", str(train_script), voice_id, str(voice_dir)],
-        stdout=log_file, stderr=subprocess.STDOUT,
+        stdout=open(voice_dir / "train.log", "w"),
+        stderr=subprocess.STDOUT,
         cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
-        close_fds=False,
+        start_new_session=True,  # Detach from parent
     )
+    logger.info(f"Training started: {voice_id}")
 
     return f"Đang huấn luyện giọng '{voice_name}' ({duration:.0f}s audio)... Kiểm tra ở tab Thư viện."
 
@@ -491,8 +498,6 @@ def switch_model(version):
 # Speech-to-Text (Whisper)
 # ============================================================
 
-whisper_model = None
-
 WHISPER_TRANSCRIBE_OPTS = dict(
     beam_size=5,
     best_of=5,
@@ -509,35 +514,22 @@ WHISPER_TRANSCRIBE_OPTS = dict(
 )
 
 
+def _load_whisper_impl():
+    from faster_whisper import WhisperModel
+    # Check for fine-tuned model
+    active_file = WHISPER_MODELS_DIR / "active_version.txt"
+    if active_file.exists():
+        version = active_file.read_text().strip()
+        ct2_path = WHISPER_MODELS_DIR / version / "ct2"
+        if ct2_path.exists():
+            return WhisperModel(str(ct2_path), device="cuda", compute_type="float16",
+                                num_workers=4, cpu_threads=16)
+    return WhisperModel("large-v3", device="cuda", compute_type="float16",
+                        num_workers=4, cpu_threads=16)
+
+
 def load_whisper():
-    global whisper_model
-    if whisper_model is None:
-        from faster_whisper import WhisperModel
-
-        # Check for fine-tuned model
-        active_file = WHISPER_MODELS_DIR / "active_version.txt"
-        if active_file.exists():
-            version = active_file.read_text().strip()
-            ct2_path = WHISPER_MODELS_DIR / version / "ct2"
-            if ct2_path.exists():
-                print(f"Loading fine-tuned Whisper ({version})...")
-                whisper_model = WhisperModel(
-                    str(ct2_path), device="cuda", compute_type="float16",
-                    num_workers=4, cpu_threads=16,
-                )
-                print(f"Fine-tuned Whisper {version} loaded.")
-                return whisper_model
-
-        print("Loading Whisper large-v3 on CUDA float16...")
-        whisper_model = WhisperModel(
-            "large-v3",
-            device="cuda",
-            compute_type="float16",
-            num_workers=4,
-            cpu_threads=16,
-        )
-        print("Whisper loaded.")
-    return whisper_model
+    return models.get_whisper(_load_whisper_impl)
 
 
 def transcribe_audio(audio_path, language):
@@ -592,38 +584,28 @@ def get_all_training_status():
 
 def get_gpu_status():
     """Get GPU usage info."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5,
+    gpu = get_gpu_info()
+    if gpu:
+        q_info = f" | Queue: {gpu_queue.queue_size}" if gpu_queue.queue_size > 0 else ""
+        return (
+            f"**GPU:** {gpu['utilization_pct']}% | "
+            f"**VRAM:** {gpu['memory_used_mb']}/{gpu['memory_total_mb']}MB "
+            f"({gpu['memory_pct']}%)\n"
+            f"**Temp:** {gpu['temperature_c']}°C{q_info}"
         )
-        parts = result.stdout.strip().split(", ")
-        if len(parts) >= 4:
-            return (
-                f"**GPU Usage:** {parts[0]}%\n"
-                f"**VRAM:** {parts[1]} / {parts[2]} MB\n"
-                f"**Temperature:** {parts[3]}°C"
-            )
-    except Exception:
-        pass
-    return "Không lấy được thông tin GPU."
+    return "GPU: N/A"
 
 
 def get_disk_status():
     """Get disk usage."""
     try:
-        import shutil as sh
-        total, used, free = sh.disk_usage("/")
-        models_size = sum(f.stat().st_size for f in MODELS_DIR.rglob("*") if f.is_file()) / (1024**3)
-        lib_size = sum(f.stat().st_size for f in VOICE_LIBRARY_DIR.rglob("*") if f.is_file()) / (1024**3) if VOICE_LIBRARY_DIR.exists() else 0
+        disk = psutil.disk_usage("/")
         return (
-            f"**Disk:** {used//(1024**3)}GB / {total//(1024**3)}GB (free: {free//(1024**3)}GB)\n"
-            f"**Models:** {models_size:.1f} GB\n"
-            f"**Voice Library:** {lib_size:.1f} GB"
+            f"**Disk:** {disk.used//(1024**3)}GB / {disk.total//(1024**3)}GB "
+            f"(free: {disk.free//(1024**3)}GB)"
         )
     except Exception:
-        return "Không lấy được thông tin disk."
+        return "Disk: N/A"
 
 
 def refresh_dashboard():
@@ -1100,18 +1082,26 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
 
 
 if __name__ == "__main__":
-    import torch
     # GPU optimization
     torch.backends.cudnn.benchmark = True
     if hasattr(torch, 'set_float32_matmul_precision'):
         torch.set_float32_matmul_precision('high')
 
-    print("Loading F5-TTS model...")
+    # Validate critical files at startup
+    vocab = MODEL_DIR / "vocab.txt"
+    ckpt = MODEL_DIR / "model_last.pt"
+    if not vocab.exists() or not ckpt.exists():
+        logger.error(f"Missing model files: vocab={vocab.exists()}, ckpt={ckpt.exists()}")
+
+    logger.info("Loading F5-TTS model...")
     load_model()
-    print("Pre-loading Whisper model...")
+    logger.info("Pre-loading Whisper model...")
     load_whisper()
-    print("All models loaded. GPU ready.")
-    print("Starting server...")
+
+    # Start background memory monitor
+    start_memory_monitor(interval=30)
+
+    logger.info("All models loaded. GPU queue active. Starting server...")
     app.launch(
         server_name="127.0.0.1",
         server_port=7860,
