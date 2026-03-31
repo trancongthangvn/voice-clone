@@ -725,113 +725,155 @@ def get_stt_stats():
 # ============================================================
 
 CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+/* ========================================
+   Voice Clone - Soft Dark Theme
+   Font: SVN Gilroy
+   Palette: Muted warm tones, no neon/gradient
+   ======================================== */
 
-/* Global typography */
-.gradio-container { font-family: 'Fira Sans', sans-serif !important; }
-.gradio-container code, .gradio-container pre { font-family: 'Fira Code', monospace !important; }
+@font-face {
+    font-family: 'SVN Gilroy';
+    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Light.woff2') format('woff2');
+    font-weight: 300; font-style: normal;
+}
+@font-face {
+    font-family: 'SVN Gilroy';
+    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal;
+}
+@font-face {
+    font-family: 'SVN Gilroy';
+    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Medium.woff2') format('woff2');
+    font-weight: 500; font-style: normal;
+}
+@font-face {
+    font-family: 'SVN Gilroy';
+    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-SemiBold.woff2') format('woff2');
+    font-weight: 600; font-style: normal;
+}
+@font-face {
+    font-family: 'SVN Gilroy';
+    src: url('https://cdn.jsdelivr.net/gh/nicholasq/gilroy-font@main/Gilroy-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal;
+}
+
+/* Global */
+.gradio-container,
+.gradio-container *:not(code):not(pre) {
+    font-family: 'SVN Gilroy', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
 
 /* Header */
 .main-header {
     text-align: center;
-    padding: 1.5em 0 1em;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 1.8em 0 1.2em;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
     margin-bottom: 0.5em;
 }
 .main-header h1 {
-    font-size: 2.2em;
+    font-size: 2em;
     margin: 0;
     font-weight: 700;
-    letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #60a5fa, #22c55e);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    letter-spacing: -0.03em;
+    color: #e2e8f0;
 }
 .main-header p {
-    color: #94a3b8;
-    margin: 0.4em 0 0;
-    font-size: 1.05em;
-    font-weight: 300;
+    color: #78819a;
+    margin: 0.3em 0 0;
+    font-size: 0.95em;
+    font-weight: 400;
 }
 .main-header .version {
     display: inline-block;
-    margin-top: 0.5em;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 0.75em;
-    background: rgba(34,197,94,0.15);
-    color: #22c55e;
-    border: 1px solid rgba(34,197,94,0.3);
+    margin-top: 0.6em;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 0.72em;
+    font-weight: 500;
+    background: rgba(148,163,184,0.08);
+    color: #8896ab;
+    border: 1px solid rgba(148,163,184,0.12);
 }
 
-/* Tabs */
+/* Tabs - clean, no glow */
 .tabs > .tab-nav > button {
-    font-family: 'Fira Sans', sans-serif !important;
     font-weight: 500 !important;
-    font-size: 0.95em !important;
-    padding: 10px 20px !important;
-    border-radius: 8px 8px 0 0 !important;
-    transition: all 0.2s ease !important;
+    font-size: 0.9em !important;
+    padding: 10px 18px !important;
+    border-radius: 6px 6px 0 0 !important;
+    transition: color 0.2s ease !important;
+    color: #78819a !important;
 }
 .tabs > .tab-nav > button.selected {
-    background: linear-gradient(135deg, #1e3a5f, #1e293b) !important;
-    border-bottom: 2px solid #60a5fa !important;
+    color: #cbd5e1 !important;
+    border-bottom: 2px solid #7c8db5 !important;
+    background: transparent !important;
+}
+.tabs > .tab-nav > button:hover {
+    color: #a8b5c8 !important;
 }
 
-/* Buttons */
+/* Buttons - muted, no glow */
 .primary {
-    background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
-    border: none !important;
+    background: #4a5568 !important;
+    border: 1px solid #5a6a80 !important;
     font-weight: 600 !important;
-    letter-spacing: 0.02em !important;
+    letter-spacing: 0.01em !important;
     transition: all 0.2s ease !important;
-    box-shadow: 0 2px 8px rgba(37,99,235,0.3) !important;
+    box-shadow: none !important;
+    color: #e2e8f0 !important;
 }
 .primary:hover {
-    box-shadow: 0 4px 16px rgba(37,99,235,0.5) !important;
-    transform: translateY(-1px) !important;
+    background: #566884 !important;
+    border-color: #6b7fa0 !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 button.stop {
-    transition: all 0.2s ease !important;
+    transition: all 0.15s ease !important;
 }
 
-/* Cards / Panels */
+/* Cards / Panels - subtle borders */
 .panel, .block {
-    border-radius: 12px !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(255,255,255,0.04) !important;
 }
 
-/* Audio component */
+/* Audio */
 .audio-container {
-    border-radius: 12px !important;
+    border-radius: 10px !important;
 }
 
-/* Status badges */
-.status-ready { color: #22c55e; }
-.status-training { color: #eab308; }
-.status-failed { color: #ef4444; }
-
-/* Markdown styling */
+/* Markdown */
 .markdown-text h3 {
     font-weight: 600 !important;
-    letter-spacing: -0.01em !important;
+    color: #c9d1dc !important;
     margin-bottom: 0.5em !important;
 }
 
-/* Smooth scrollbar */
-::-webkit-scrollbar { width: 6px; }
+/* Scrollbar - thin, quiet */
+::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
     border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
 
-/* Focus states for accessibility */
+/* Focus - subtle */
 *:focus-visible {
-    outline: 2px solid #60a5fa !important;
+    outline: 1.5px solid #7c8db5 !important;
     outline-offset: 2px !important;
+}
+
+/* Inputs & textboxes - softer */
+textarea, input[type="text"] {
+    font-weight: 400 !important;
+}
+
+/* Slider */
+input[type="range"]::-webkit-slider-thumb {
+    transition: box-shadow 0.15s ease !important;
 }
 """
 
@@ -839,8 +881,8 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
     gr.HTML("""
         <div class='main-header'>
             <h1>Voice Clone</h1>
-            <p>AI Voice Cloning & Text-to-Speech</p>
-            <span class='version'>Dual Engine: F5-TTS + GPT-SoVITS</span>
+            <p>Clone giọng nói & chuyển văn bản thành giọng nói</p>
+            <span class='version'>F5-TTS + GPT-SoVITS</span>
         </div>
     """)
 
@@ -1077,11 +1119,9 @@ if __name__ == "__main__":
         root_path="https://voice.overmind.io.vn",
         ssr_mode=False,
         theme=gr.themes.Soft(
-            primary_hue=gr.themes.colors.blue,
-            secondary_hue=gr.themes.colors.green,
+            primary_hue=gr.themes.colors.slate,
+            secondary_hue=gr.themes.colors.gray,
             neutral_hue=gr.themes.colors.slate,
-            font=[gr.themes.GoogleFont("Fira Sans"), "sans-serif"],
-            font_mono=[gr.themes.GoogleFont("Fira Code"), "monospace"],
         ),
         css=CUSTOM_CSS,
     )
