@@ -1,6 +1,8 @@
 import json
 import shutil
 import uuid
+import subprocess
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -15,9 +17,9 @@ def _load_soundfile(filepath, frame_offset=0, num_frames=-1, normalize=True,
                     channels_first=True, format=None, buffer_size=4096, backend=None):
     data, sr = sf.read(str(filepath), dtype="float32")
     if data.ndim == 1:
-        data = data[np.newaxis, :]  # (1, samples)
+        data = data[np.newaxis, :]
     else:
-        data = data.T  # (channels, samples)
+        data = data.T
     if frame_offset > 0:
         data = data[:, frame_offset:]
     if num_frames > 0:
@@ -38,8 +40,9 @@ DATASET_DIR = BASE_DIR / "dataset"
 HISTORY_FILE = BASE_DIR / "history.json"
 MODELS_DIR = BASE_DIR / "models"
 MODEL_DIR = MODELS_DIR / "f5-tts-vietnamese"
+VOICE_LIBRARY_DIR = BASE_DIR / "voice_library"
 
-for d in [VOICES_DIR, OUTPUT_DIR, DATASET_DIR]:
+for d in [VOICES_DIR, OUTPUT_DIR, DATASET_DIR, VOICE_LIBRARY_DIR]:
     d.mkdir(exist_ok=True)
 
 # Global state
@@ -47,8 +50,11 @@ tts_model = None
 CURRENT_MODEL_VERSION = "v1-base"
 
 
+# ============================================================
+# F5-TTS Engine
+# ============================================================
+
 def get_active_model_path():
-    """Get the active model checkpoint path (latest version or base)."""
     active_file = MODELS_DIR / "active_version.txt"
     if active_file.exists():
         version = active_file.read_text().strip()
@@ -63,7 +69,6 @@ def load_model(force_reload=False):
     ckpt_file, version = get_active_model_path()
     if tts_model is not None and not force_reload and version == CURRENT_MODEL_VERSION:
         return tts_model
-
     vocab_file = MODEL_DIR / "vocab.txt"
     if ckpt_file.exists():
         print(f"Loading model {version} from {ckpt_file}")
@@ -75,15 +80,16 @@ def load_model(force_reload=False):
         )
         CURRENT_MODEL_VERSION = version
     else:
-        print("Vietnamese model not found, using default F5-TTS model")
-        tts_model = F5TTS(
-            device="cuda" if torch.cuda.is_available() else "cpu",
-        )
+        print("Vietnamese model not found, using default")
+        tts_model = F5TTS(device="cuda" if torch.cuda.is_available() else "cpu")
         CURRENT_MODEL_VERSION = "default"
     return tts_model
 
 
-# --- History ---
+# ============================================================
+# History
+# ============================================================
+
 def load_history():
     if HISTORY_FILE.exists():
         return json.loads(HISTORY_FILE.read_text())
@@ -93,35 +99,37 @@ def load_history():
 def save_history_entry(entry):
     history = load_history()
     history.insert(0, entry)
-    history = history[:100]  # Keep last 100
+    history = history[:100]
     HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
 
 
-# --- Dataset collection ---
+# ============================================================
+# Dataset collection
+# ============================================================
+
 def collect_training_data(audio_path, transcript):
-    """Auto-save uploaded audio + transcript for future fine-tuning."""
     if not audio_path:
         return
     sample_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
     dest_audio = DATASET_DIR / f"{sample_id}.wav"
-    data, sr = sf.read(audio_path)
+    data, sr = sf.read(str(audio_path))
     duration = len(data) / sr
     if duration < 1 or duration > 60:
         return
     sf.write(str(dest_audio), data, sr)
     meta = {
-        "id": sample_id,
-        "audio": dest_audio.name,
-        "transcript": transcript or "",
-        "duration": round(duration, 2),
+        "id": sample_id, "audio": dest_audio.name,
+        "transcript": transcript or "", "duration": round(duration, 2),
         "collected_at": datetime.now().isoformat(),
     }
-    meta_file = DATASET_DIR / "metadata.jsonl"
-    with open(meta_file, "a") as f:
+    with open(DATASET_DIR / "metadata.jsonl", "a") as f:
         f.write(json.dumps(meta, ensure_ascii=False) + "\n")
 
 
-# --- Voice management ---
+# ============================================================
+# Voice management (F5-TTS quick clone)
+# ============================================================
+
 def save_voice(audio_path, voice_name):
     if not audio_path or not voice_name:
         return "Vui lòng upload audio và nhập tên giọng nói."
@@ -147,8 +155,11 @@ def delete_voice(voice_name):
     return f"Đã xóa: {voice_name}", gr.Dropdown(choices=voices, value=voices[0] if voices else None)
 
 
-# --- TTS ---
-def clone_voice(audio_input, ref_text, gen_text, saved_voice, speed):
+# ============================================================
+# F5-TTS Inference
+# ============================================================
+
+def clone_voice_f5(audio_input, ref_text, gen_text, saved_voice, speed):
     if not gen_text or not gen_text.strip():
         return None, "Vui lòng nhập văn bản cần đọc."
 
@@ -163,9 +174,7 @@ def clone_voice(audio_input, ref_text, gen_text, saved_voice, speed):
     if not ref_audio:
         return None, "Vui lòng upload audio mẫu hoặc chọn giọng đã lưu."
 
-    # Auto-collect for training
     collect_training_data(ref_audio, ref_text)
-
     model = load_model()
     output_path = OUTPUT_DIR / f"{uuid.uuid4().hex}.wav"
 
@@ -177,17 +186,15 @@ def clone_voice(audio_input, ref_text, gen_text, saved_voice, speed):
             speed=speed,
         )
         sf.write(str(output_path), wav, sr)
-
-        # Save to history
         save_history_entry({
             "time": datetime.now().strftime("%d/%m %H:%M"),
             "text": gen_text.strip()[:80],
             "voice": saved_voice or "upload",
             "output": output_path.name,
+            "engine": "F5-TTS",
             "model": CURRENT_MODEL_VERSION,
         })
-
-        return str(output_path), f"Tạo thành công! (Model: {CURRENT_MODEL_VERSION})"
+        return str(output_path), f"Thành công! (F5-TTS {CURRENT_MODEL_VERSION})"
     except Exception as e:
         return None, f"Lỗi: {str(e)}"
 
@@ -197,51 +204,218 @@ def refresh_voices():
     return gr.Dropdown(choices=voices, value=voices[0] if voices else None)
 
 
-# --- History display ---
+# ============================================================
+# Voice Library (GPT-SoVITS fine-tuned voices)
+# ============================================================
+
+def get_library_voices():
+    """List all trained voices in the library."""
+    voices = []
+    for voice_dir in sorted(VOICE_LIBRARY_DIR.iterdir()):
+        if voice_dir.is_dir():
+            meta_file = voice_dir / "meta.json"
+            if meta_file.exists():
+                meta = json.loads(meta_file.read_text())
+                meta["id"] = voice_dir.name
+                voices.append(meta)
+    return voices
+
+
+def get_library_voice_choices():
+    voices = get_library_voices()
+    return [f"{v['name']} ({v.get('status', '?')})" for v in voices]
+
+
+def get_library_voice_ids():
+    voices = get_library_voices()
+    return [v['id'] for v in voices]
+
+
+def library_tts(voice_selection, gen_text, speed):
+    """Generate speech using a trained library voice via GPT-SoVITS."""
+    if not gen_text or not gen_text.strip():
+        return None, "Vui lòng nhập văn bản."
+    if not voice_selection:
+        return None, "Vui lòng chọn giọng."
+
+    # Extract voice id from selection
+    voices = get_library_voices()
+    voice_idx = get_library_voice_choices().index(voice_selection) if voice_selection in get_library_voice_choices() else -1
+    if voice_idx < 0:
+        return None, "Giọng không hợp lệ."
+
+    voice = voices[voice_idx]
+    voice_dir = VOICE_LIBRARY_DIR / voice["id"]
+
+    if voice.get("status") != "ready":
+        return None, f"Giọng '{voice['name']}' chưa sẵn sàng (trạng thái: {voice.get('status')})"
+
+    gpt_path = voice_dir / "gpt.ckpt"
+    sovits_path = voice_dir / "sovits.pth"
+    ref_audio = voice_dir / "ref.wav"
+
+    if not gpt_path.exists() or not sovits_path.exists():
+        return None, "Thiếu model file. Cần huấn luyện lại."
+
+    output_path = OUTPUT_DIR / f"lib_{uuid.uuid4().hex}.wav"
+
+    try:
+        sovits_venv = BASE_DIR / "engines" / "GPT-SoVITS" / "venv" / "bin" / "python3"
+        sovits_dir = BASE_DIR / "engines" / "GPT-SoVITS"
+        api_script = BASE_DIR / "engines" / "sovits_infer.py"
+
+        cmd = [
+            str(sovits_venv),
+            str(api_script),
+            "--gpt_path", str(gpt_path),
+            "--sovits_path", str(sovits_path),
+            "--ref_audio", str(ref_audio),
+            "--ref_text", voice.get("transcript", ""),
+            "--text", gen_text.strip(),
+            "--output", str(output_path),
+            "--speed", str(speed),
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+                                cwd=str(sovits_dir))
+        if result.returncode != 0:
+            return None, f"Lỗi GPT-SoVITS: {result.stderr[:300]}"
+
+        if output_path.exists():
+            save_history_entry({
+                "time": datetime.now().strftime("%d/%m %H:%M"),
+                "text": gen_text.strip()[:80],
+                "voice": voice["name"],
+                "output": output_path.name,
+                "engine": "GPT-SoVITS",
+            })
+            return str(output_path), f"Thành công! (GPT-SoVITS - {voice['name']})"
+        else:
+            return None, "Không tạo được file audio."
+    except subprocess.TimeoutExpired:
+        return None, "Timeout - text quá dài hoặc model quá chậm."
+    except Exception as e:
+        return None, f"Lỗi: {str(e)}"
+
+
+def train_new_voice(audio_file, voice_name, description, transcript):
+    """Start training a new voice for the library."""
+    if not audio_file or not voice_name or not transcript:
+        return "Vui lòng điền đầy đủ: audio, tên, và transcript."
+
+    voice_id = voice_name.strip().lower().replace(" ", "_")
+    voice_id = re.sub(r'[^a-z0-9_]', '', voice_id)
+    voice_dir = VOICE_LIBRARY_DIR / voice_id
+
+    if voice_dir.exists():
+        return f"Giọng '{voice_id}' đã tồn tại. Chọn tên khác."
+
+    voice_dir.mkdir(parents=True)
+
+    # Copy audio
+    data, sr = sf.read(audio_file)
+    sf.write(str(voice_dir / "raw_audio.wav"), data, sr)
+
+    # Save ref audio (first 15s)
+    ref_duration = min(len(data), sr * 15)
+    sf.write(str(voice_dir / "ref.wav"), data[:ref_duration], sr)
+
+    # Save metadata
+    meta = {
+        "name": voice_name.strip(),
+        "description": description or "",
+        "transcript": transcript.strip(),
+        "created_at": datetime.now().isoformat(),
+        "status": "training",
+        "duration": round(len(data) / sr, 1),
+    }
+    (voice_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+
+    # Create training list
+    (voice_dir / "train.list").write_text(
+        f"{voice_dir / 'raw_audio.wav'}|{voice_name}|vi|{transcript.strip()}\n"
+    )
+
+    # Start training in background
+    train_script = BASE_DIR / "engines" / "train_voice.sh"
+    log_file = open(voice_dir / "train.log", "w")
+    subprocess.Popen(
+        ["bash", str(train_script), voice_id, str(voice_dir)],
+        stdout=log_file, stderr=subprocess.STDOUT,
+        cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
+    )
+
+    return f"Đang huấn luyện giọng '{voice_name}'... Kiểm tra trạng thái ở tab Thư viện."
+
+
+def get_training_log(voice_selection):
+    """Get training log for a voice."""
+    if not voice_selection:
+        return "Chọn giọng để xem log."
+    voices = get_library_voices()
+    choices = get_library_voice_choices()
+    if voice_selection not in choices:
+        return "Giọng không hợp lệ."
+    voice = voices[choices.index(voice_selection)]
+    log_file = VOICE_LIBRARY_DIR / voice["id"] / "train.log"
+    if log_file.exists():
+        content = log_file.read_text()
+        return content[-3000:] if len(content) > 3000 else content
+    return "Chưa có log."
+
+
+def delete_library_voice(voice_selection):
+    if not voice_selection:
+        return "Chọn giọng cần xóa.", gr.Dropdown(choices=get_library_voice_choices())
+    voices = get_library_voices()
+    choices = get_library_voice_choices()
+    if voice_selection not in choices:
+        return "Giọng không hợp lệ.", gr.Dropdown(choices=choices)
+    voice = voices[choices.index(voice_selection)]
+    voice_dir = VOICE_LIBRARY_DIR / voice["id"]
+    if voice_dir.exists():
+        shutil.rmtree(voice_dir)
+    new_choices = get_library_voice_choices()
+    return f"Đã xóa: {voice['name']}", gr.Dropdown(choices=new_choices, value=new_choices[0] if new_choices else None)
+
+
+# ============================================================
+# History & Stats
+# ============================================================
+
 def get_history_display():
     history = load_history()
     if not history:
         return "Chưa có lịch sử."
     lines = []
     for h in history[:20]:
-        lines.append(f"**{h['time']}** | {h.get('voice','?')} | {h['text']}")
+        engine = h.get("engine", "F5-TTS")
+        lines.append(f"**{h['time']}** | {engine} | {h.get('voice','?')} | {h['text']}")
     return "\n\n".join(lines)
 
 
-def play_history_audio(evt: gr.SelectData):
-    history = load_history()
-    if evt.index < len(history):
-        path = OUTPUT_DIR / history[evt.index]["output"]
-        if path.exists():
-            return str(path)
-    return None
-
-
-# --- Dataset stats ---
 def get_dataset_stats():
     meta_file = DATASET_DIR / "metadata.jsonl"
     if not meta_file.exists():
         return "Chưa có dữ liệu training."
     lines = meta_file.read_text().strip().split("\n")
     total = len(lines)
-    total_duration = 0
-    with_transcript = 0
-    for line in lines:
-        entry = json.loads(line)
-        total_duration += entry.get("duration", 0)
-        if entry.get("transcript"):
-            with_transcript += 1
-    hours = total_duration / 3600
-    mins = total_duration / 60
+    total_duration = sum(json.loads(l).get("duration", 0) for l in lines)
+    with_transcript = sum(1 for l in lines if json.loads(l).get("transcript"))
+    lib_voices = get_library_voices()
+    ready = sum(1 for v in lib_voices if v.get("status") == "ready")
+    training = sum(1 for v in lib_voices if v.get("status") == "training")
     return (
-        f"**Tổng samples:** {total}\n\n"
-        f"**Tổng thời lượng:** {hours:.1f}h ({mins:.0f} phút)\n\n"
-        f"**Có transcript:** {with_transcript}/{total}\n\n"
-        f"**Model hiện tại:** {CURRENT_MODEL_VERSION}"
+        f"### F5-TTS Dataset\n"
+        f"- Samples: **{total}** ({total_duration/60:.0f} phút)\n"
+        f"- Có transcript: {with_transcript}/{total}\n"
+        f"- Model: **{CURRENT_MODEL_VERSION}**\n\n"
+        f"### Thư viện giọng (GPT-SoVITS)\n"
+        f"- Tổng: **{len(lib_voices)}** giọng\n"
+        f"- Sẵn dùng: **{ready}** | Đang train: **{training}**"
     )
 
 
-# --- Model version management ---
 def get_model_versions():
     versions = ["v1-base"]
     for d in sorted(MODELS_DIR.iterdir()):
@@ -261,15 +435,19 @@ def switch_model(version):
     else:
         active_file.write_text(version)
     load_model(force_reload=True)
-    return f"Đã chuyển sang model: {CURRENT_MODEL_VERSION}"
+    return f"Đã chuyển sang: {CURRENT_MODEL_VERSION}"
 
 
-# === BUILD UI ===
+# ============================================================
+# BUILD UI
+# ============================================================
+
 CUSTOM_CSS = """
 .main-header { text-align: center; padding: 1em 0 0.5em; }
 .main-header h1 { font-size: 2em; margin: 0; }
-.main-header p { color: #888; margin: 0.3em 0 0; }
-.stat-card { padding: 0.8em; border-radius: 8px; }
+.main-header p { color: #888; margin: 0.3em 0 0; font-size: 1.1em; }
+.engine-badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 0.85em; font-weight: bold; }
 """
 
 with gr.Blocks(title="Voice Clone - Overmind") as app:
@@ -281,137 +459,154 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
     """)
 
     with gr.Tabs():
-        # === Tab 1: Clone & TTS ===
-        with gr.Tab("Clone & TTS"):
+        # === Tab 1: Clone nhanh (F5-TTS) ===
+        with gr.Tab("Clone nhanh (F5-TTS)"):
+            gr.Markdown("Zero-shot voice clone - upload audio mẫu, không cần huấn luyện")
             with gr.Row():
                 with gr.Column(scale=1):
                     gr.Markdown("### Giọng mẫu")
                     audio_input = gr.Audio(
                         label="Upload audio mẫu (tối ưu 15-30s, nói rõ ràng)",
-                        type="filepath",
-                        sources=["upload", "microphone"],
+                        type="filepath", sources=["upload", "microphone"],
                     )
                     with gr.Row():
                         saved_voice = gr.Dropdown(
                             label="Hoặc chọn giọng đã lưu",
-                            choices=get_saved_voices(),
-                            interactive=True,
-                            scale=3,
+                            choices=get_saved_voices(), interactive=True, scale=3,
                         )
                         refresh_btn = gr.Button("🔄", size="sm", scale=1, min_width=40)
                     ref_text = gr.Textbox(
-                        label="Transcript audio mẫu (tùy chọn, nhập để tăng chất lượng)",
+                        label="Transcript audio mẫu (nhập để tăng chất lượng)",
                         placeholder="Nhập chính xác nội dung audio mẫu đang nói...",
                         lines=2,
                     )
-
                 with gr.Column(scale=1):
                     gr.Markdown("### Văn bản cần đọc")
                     gen_text = gr.Textbox(
-                        label="Nhập văn bản",
+                        label="Nhập văn bản", lines=5,
                         placeholder="Nhập nội dung bạn muốn giọng clone đọc...",
-                        lines=5,
                     )
-                    speed = gr.Slider(
-                        minimum=0.5, maximum=2.0, value=1.0, step=0.1,
-                        label="Tốc độ đọc",
-                    )
-                    generate_btn = gr.Button(
-                        "Tạo Audio", variant="primary", size="lg",
-                    )
-
+                    speed = gr.Slider(0.5, 2.0, 1.0, 0.1, label="Tốc độ")
+                    gen_btn = gr.Button("Tạo Audio", variant="primary", size="lg")
             with gr.Row():
                 output_audio = gr.Audio(label="Kết quả", type="filepath")
                 status_text = gr.Textbox(label="Trạng thái", interactive=False)
 
-            generate_btn.click(
-                fn=clone_voice,
-                inputs=[audio_input, ref_text, gen_text, saved_voice, speed],
-                outputs=[output_audio, status_text],
-            )
-            refresh_btn.click(fn=refresh_voices, outputs=[saved_voice])
+            gen_btn.click(clone_voice_f5,
+                          [audio_input, ref_text, gen_text, saved_voice, speed],
+                          [output_audio, status_text])
+            refresh_btn.click(refresh_voices, outputs=[saved_voice])
 
-        # === Tab 2: Quản lý giọng ===
-        with gr.Tab("Quản lý giọng nói"):
-            gr.Markdown("### Lưu giọng nói để dùng lại")
+        # === Tab 2: Thư viện giọng (GPT-SoVITS) ===
+        with gr.Tab("Thư viện giọng"):
+            gr.Markdown("Giọng nói chất lượng cao đã huấn luyện - chọn giọng và nhập text")
             with gr.Row():
-                voice_upload = gr.Audio(
-                    label="Upload audio giọng nói",
-                    type="filepath",
-                    sources=["upload", "microphone"],
-                )
-                with gr.Column():
-                    voice_name = gr.Textbox(
-                        label="Tên giọng nói",
-                        placeholder="vd: giang_vien, mc_truyen_hinh...",
+                with gr.Column(scale=1):
+                    lib_voice_dd = gr.Dropdown(
+                        label="Chọn giọng",
+                        choices=get_library_voice_choices(), interactive=True,
                     )
+                    lib_refresh = gr.Button("Refresh danh sách", size="sm")
+                    lib_text = gr.Textbox(label="Văn bản cần đọc", lines=5,
+                                          placeholder="Nhập text...")
+                    lib_speed = gr.Slider(0.5, 2.0, 1.0, 0.1, label="Tốc độ")
+                    lib_gen_btn = gr.Button("Tạo Audio", variant="primary", size="lg")
+                with gr.Column(scale=1):
+                    lib_output = gr.Audio(label="Kết quả", type="filepath")
+                    lib_status = gr.Textbox(label="Trạng thái", interactive=False)
+
+            lib_gen_btn.click(library_tts,
+                              [lib_voice_dd, lib_text, lib_speed],
+                              [lib_output, lib_status])
+            lib_refresh.click(
+                lambda: gr.Dropdown(choices=get_library_voice_choices()),
+                outputs=[lib_voice_dd])
+
+        # === Tab 3: Huấn luyện giọng mới ===
+        with gr.Tab("Huấn luyện giọng"):
+            gr.Markdown(
+                "### Thêm giọng mới vào thư viện\n"
+                "Upload **1-3 phút** audio giọng nói sạch + transcript chính xác. "
+                "Hệ thống sẽ huấn luyện giọng bằng GPT-SoVITS (~10-20 phút trên GPU)."
+            )
+            with gr.Row():
+                with gr.Column():
+                    train_audio = gr.Audio(label="Audio giọng nói (1-3 phút, sạch)",
+                                           type="filepath", sources=["upload"])
+                    train_name = gr.Textbox(label="Tên giọng", placeholder="vd: MC Thời sự")
+                    train_desc = gr.Textbox(label="Mô tả (tùy chọn)", placeholder="Giọng nam miền Bắc...")
+                    train_transcript = gr.Textbox(
+                        label="Transcript (BẮT BUỘC - nội dung audio đang nói)",
+                        placeholder="Nhập chính xác nội dung audio...",
+                        lines=4,
+                    )
+                    train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary")
+                    train_status = gr.Textbox(label="Trạng thái", interactive=False)
+
+                with gr.Column():
+                    gr.Markdown("### Trạng thái huấn luyện")
+                    log_voice_dd = gr.Dropdown(
+                        label="Chọn giọng", choices=get_library_voice_choices(), interactive=True)
+                    log_refresh = gr.Button("Xem log", size="sm")
+                    train_log = gr.Textbox(label="Training log", lines=15, interactive=False)
+
+            train_btn.click(train_new_voice,
+                            [train_audio, train_name, train_desc, train_transcript],
+                            [train_status])
+            log_refresh.click(get_training_log, [log_voice_dd], [train_log])
+
+        # === Tab 4: Quản lý ===
+        with gr.Tab("Quản lý"):
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("### Giọng nhanh (F5-TTS)")
                     with gr.Row():
-                        save_btn = gr.Button("Lưu giọng", variant="primary")
-                        del_voice_dd = gr.Dropdown(
-                            label="Xóa giọng",
-                            choices=get_saved_voices(),
-                            interactive=True,
-                        )
+                        voice_upload = gr.Audio(label="Upload audio", type="filepath",
+                                                sources=["upload", "microphone"])
+                        with gr.Column():
+                            voice_name = gr.Textbox(label="Tên giọng", placeholder="vd: giang_vien")
+                            save_btn = gr.Button("Lưu", variant="primary")
+                    with gr.Row():
+                        del_voice_dd = gr.Dropdown(label="Xóa giọng", choices=get_saved_voices(), interactive=True)
                         del_btn = gr.Button("Xóa", variant="stop", size="sm")
-            save_status = gr.Textbox(label="Trạng thái", interactive=False)
+                    mgmt_status = gr.Textbox(label="Trạng thái", interactive=False)
 
-            save_btn.click(
-                fn=save_voice,
-                inputs=[voice_upload, voice_name],
-                outputs=[save_status],
-            )
-            del_btn.click(
-                fn=delete_voice,
-                inputs=[del_voice_dd],
-                outputs=[save_status, del_voice_dd],
-            )
+                    save_btn.click(save_voice, [voice_upload, voice_name], [mgmt_status])
+                    del_btn.click(delete_voice, [del_voice_dd], [mgmt_status, del_voice_dd])
 
-        # === Tab 3: Lịch sử ===
-        with gr.Tab("Lịch sử"):
-            history_md = gr.Markdown(value=get_history_display)
-            history_audio = gr.Audio(label="Nghe lại", type="filepath", interactive=False)
-            history_refresh = gr.Button("Refresh")
-            history_refresh.click(fn=get_history_display, outputs=[history_md])
+                with gr.Column():
+                    gr.Markdown("### Thư viện giọng (GPT-SoVITS)")
+                    del_lib_dd = gr.Dropdown(label="Xóa giọng thư viện",
+                                             choices=get_library_voice_choices(), interactive=True)
+                    del_lib_btn = gr.Button("Xóa", variant="stop", size="sm")
+                    del_lib_status = gr.Textbox(label="Trạng thái", interactive=False)
+                    del_lib_btn.click(delete_library_voice, [del_lib_dd], [del_lib_status, del_lib_dd])
 
-        # === Tab 4: Training Data & Model ===
-        with gr.Tab("Training & Model"):
+            gr.Markdown("---")
             with gr.Row():
                 with gr.Column():
-                    gr.Markdown("### Dataset tự thu thập")
-                    gr.Markdown("Mỗi lần bạn upload audio mẫu, hệ thống tự động lưu lại "
-                                "làm dữ liệu training cho fine-tune sau này.")
-                    dataset_stats = gr.Markdown(value=get_dataset_stats)
-                    stats_refresh = gr.Button("Refresh thống kê")
-                    stats_refresh.click(fn=get_dataset_stats, outputs=[dataset_stats])
-
-                with gr.Column():
-                    gr.Markdown("### Quản lý Model")
-                    model_dd = gr.Dropdown(
-                        label="Chọn version model",
-                        choices=get_model_versions(),
-                        value=CURRENT_MODEL_VERSION,
-                        interactive=True,
-                    )
+                    gr.Markdown("### F5-TTS Model")
+                    model_dd = gr.Dropdown(label="Version", choices=get_model_versions(),
+                                           value=CURRENT_MODEL_VERSION, interactive=True)
                     switch_btn = gr.Button("Chuyển model", variant="primary")
                     model_status = gr.Textbox(label="Trạng thái", interactive=False)
-                    switch_btn.click(
-                        fn=switch_model,
-                        inputs=[model_dd],
-                        outputs=[model_status],
-                    )
+                    switch_btn.click(switch_model, [model_dd], [model_status])
 
-                    gr.Markdown("### Hướng dẫn Fine-tune")
-                    gr.Markdown(
-                        "1. Thu thập data: Hệ thống tự động lưu audio upload vào `dataset/`\n"
-                        "2. Chạy fine-tune:\n"
-                        "```bash\ncd /home/thang/voice-clone\nsource venv/bin/activate\n"
-                        "python3 finetune.py --version v2\n```\n"
-                        "3. Sau khi train xong, chọn version mới ở dropdown trên và bấm 'Chuyển model'"
-                    )
+                with gr.Column():
+                    gr.Markdown("### Thống kê")
+                    stats_md = gr.Markdown(value=get_dataset_stats)
+                    stats_refresh = gr.Button("Refresh")
+                    stats_refresh.click(get_dataset_stats, outputs=[stats_md])
+
+        # === Tab 5: Lịch sử ===
+        with gr.Tab("Lịch sử"):
+            history_md = gr.Markdown(value=get_history_display)
+            history_refresh = gr.Button("Refresh")
+            history_refresh.click(get_history_display, outputs=[history_md])
 
 
 if __name__ == "__main__":
-    print("Loading model...")
+    print("Loading F5-TTS model...")
     load_model()
     print("Starting server...")
     app.launch(
