@@ -577,6 +577,25 @@ def refresh_dashboard():
     return get_all_training_status(), get_gpu_status(), get_disk_status(), get_dataset_stats()
 
 
+def auto_transcribe(audio_path):
+    """Auto-transcribe when audio is uploaded in Training Dashboard."""
+    if not audio_path:
+        return "", ""
+    try:
+        model = load_whisper()
+        segments, info = model.transcribe(
+            audio_path, language=None, beam_size=5,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+        )
+        text = " ".join(seg.text.strip() for seg in segments)
+        duration = info.duration
+        status = f"Nhận dạng xong ({info.language}, {duration:.0f}s). Kiểm tra và sửa transcript trước khi train."
+        return text.strip(), status
+    except Exception as e:
+        return "", f"Lỗi nhận dạng: {e}"
+
+
 # ============================================================
 # BUILD UI
 # ============================================================
@@ -700,14 +719,21 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                     train_desc = gr.Textbox(label="Mô tả (tùy chọn)",
                                             placeholder="Giọng nam miền Bắc, trầm ấm...")
                     train_transcript = gr.Textbox(
-                        label="Transcript (BẮT BUỘC)",
-                        placeholder="Nhập chính xác nội dung audio đang nói...\n"
-                                    "Tip: dùng tab Voice to Text để tự động tạo transcript",
+                        label="Transcript (tự động nhận dạng khi upload audio)",
+                        placeholder="Upload audio ở trên → tự động điền transcript...\n"
+                                    "Hoặc nhập/sửa thủ công.",
                         lines=5,
                     )
                     with gr.Row():
                         train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary", size="lg")
                     train_status = gr.Textbox(label="Trạng thái", interactive=False)
+
+                    # Auto-transcribe when audio uploaded
+                    train_audio.change(
+                        fn=auto_transcribe,
+                        inputs=[train_audio],
+                        outputs=[train_transcript, train_status],
+                    )
 
                 # Right: Monitor & Status
                 with gr.Column(scale=1):
