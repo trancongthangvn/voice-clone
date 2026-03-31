@@ -71,6 +71,11 @@ def load_model(force_reload=False):
     ckpt_file, version = get_active_model_path()
     if tts_model is not None and not force_reload and version == CURRENT_MODEL_VERSION:
         return tts_model
+    # Free old model VRAM before loading new
+    if tts_model is not None:
+        del tts_model
+        tts_model = None
+        torch.cuda.empty_cache()
     vocab_file = MODEL_DIR / "vocab.txt"
     if ckpt_file.exists():
         print(f"Loading model {version} from {ckpt_file}")
@@ -222,13 +227,19 @@ def refresh_voices():
 def get_library_voices():
     """List all trained voices in the library."""
     voices = []
-    for voice_dir in sorted(VOICE_LIBRARY_DIR.iterdir()):
-        if voice_dir.is_dir():
-            meta_file = voice_dir / "meta.json"
-            if meta_file.exists():
-                meta = json.loads(meta_file.read_text())
-                meta["id"] = voice_dir.name
-                voices.append(meta)
+    try:
+        for voice_dir in sorted(VOICE_LIBRARY_DIR.iterdir()):
+            try:
+                if voice_dir.is_dir():
+                    meta_file = voice_dir / "meta.json"
+                    if meta_file.exists():
+                        meta = json.loads(meta_file.read_text())
+                        meta["id"] = voice_dir.name
+                        voices.append(meta)
+            except (json.JSONDecodeError, FileNotFoundError, OSError):
+                continue
+    except OSError:
+        pass
     return voices
 
 
@@ -367,12 +378,13 @@ def train_new_voice(audio_file, voice_name, description, transcript, auto_transc
     if not train_script.exists():
         return "Lỗi: không tìm thấy script huấn luyện."
 
-    with open(voice_dir / "train.log", "w") as log_file:
-        subprocess.Popen(
-            ["bash", str(train_script), voice_id, str(voice_dir)],
-            stdout=log_file, stderr=subprocess.STDOUT,
-            cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
-        )
+    log_file = open(voice_dir / "train.log", "w")
+    subprocess.Popen(
+        ["bash", str(train_script), voice_id, str(voice_dir)],
+        stdout=log_file, stderr=subprocess.STDOUT,
+        cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
+        close_fds=False,
+    )
 
     return f"Đang huấn luyện giọng '{voice_name}' ({duration:.0f}s audio)... Kiểm tra ở tab Thư viện."
 
@@ -788,9 +800,10 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
             lib_gen_btn.click(library_tts,
                               [lib_voice_dd, lib_text, lib_speed],
                               [lib_output, lib_status])
-            lib_refresh.click(
-                lambda: gr.Dropdown(choices=get_library_voice_choices()),
-                outputs=[lib_voice_dd])
+            def refresh_lib_voices():
+                choices = get_library_voice_choices()
+                return gr.Dropdown(choices=choices, value=choices[0] if choices else None)
+            lib_refresh.click(refresh_lib_voices, outputs=[lib_voice_dd])
 
         # === Tab 3: Voice to Text (STT) ===
         with gr.Tab("Voice to Text"):

@@ -168,26 +168,26 @@ def finetune(version="v2", epochs=3, batch_size=4, lr=1e-5):
 
     # Convert to CTranslate2 format for faster-whisper
     print("\nConverting to CTranslate2 format for faster-whisper...")
-    try:
-        import subprocess
-        ct2_dir = output_dir / "ct2"
-        subprocess.run([
-            sys.executable, "-m", "ctranslate2.converters.transformers",
-            "--model", str(output_dir / "final"),
-            "--output_dir", str(ct2_dir),
-            "--quantization", "float16",
-        ], check=True)
+    import subprocess as sp
+    ct2_dir = output_dir / "ct2"
+    result = sp.run([
+        sys.executable, "-m", "ctranslate2.converters.transformers",
+        "--model", str(output_dir / "final"),
+        "--output_dir", str(ct2_dir),
+        "--quantization", "float16",
+    ], capture_output=True, text=True)
 
-        # Set as active version
+    if result.returncode == 0 and ct2_dir.exists():
+        # Only set active if conversion succeeded
         active_file = WHISPER_MODELS_DIR / "active_version.txt"
         active_file.write_text(version)
         print(f"\nFine-tune complete! Model saved to {ct2_dir}")
         print(f"Active version set to: {version}")
         print("Restart the app to use the new model.")
-    except Exception as e:
-        print(f"\nCT2 conversion failed: {e}")
+    else:
+        print(f"\nCT2 conversion failed: {result.stderr}")
         print(f"HuggingFace model saved to {output_dir / 'final'}")
-        print("You can convert manually later.")
+        print("NOT setting as active. Convert manually and restart.")
 
 
 if __name__ == "__main__":

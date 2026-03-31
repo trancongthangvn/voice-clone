@@ -26,7 +26,12 @@ def prepare_dataset():
 
     entries = []
     for line in meta_file.read_text().strip().split("\n"):
-        entry = json.loads(line)
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
         audio_path = DATASET_DIR / entry["audio"]
         if audio_path.exists() and entry.get("transcript"):
             entries.append(entry)

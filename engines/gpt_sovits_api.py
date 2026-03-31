@@ -75,7 +75,9 @@ async def train_voice(
     transcript: str = Form(...),
 ):
     """Train a new voice from audio + transcript."""
+    import re as re_mod
     voice_id = name.strip().lower().replace(" ", "_")
+    voice_id = re_mod.sub(r'[^a-z0-9_]', '', voice_id)
     voice_dir = VOICE_LIBRARY_DIR / voice_id
     voice_dir.mkdir(parents=True, exist_ok=True)
 
