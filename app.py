@@ -474,13 +474,31 @@ def switch_model(version):
 
 whisper_model = None
 
+WHISPER_TRANSCRIBE_OPTS = dict(
+    beam_size=5,
+    best_of=5,
+    vad_filter=True,
+    vad_parameters=dict(
+        min_silence_duration_ms=300,
+        speech_pad_ms=200,
+    ),
+    word_timestamps=False,
+    condition_on_previous_text=True,
+)
+
 
 def load_whisper():
     global whisper_model
     if whisper_model is None:
         from faster_whisper import WhisperModel
-        print("Loading Whisper model (large-v3)...")
-        whisper_model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+        print("Loading Whisper large-v3 on CUDA float16...")
+        whisper_model = WhisperModel(
+            "large-v3",
+            device="cuda",
+            compute_type="float16",
+            num_workers=4,
+            cpu_threads=8,
+        )
         print("Whisper loaded.")
     return whisper_model
 
@@ -494,9 +512,7 @@ def transcribe_audio(audio_path, language):
         segments, info = model.transcribe(
             audio_path,
             language=lang,
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
+            **WHISPER_TRANSCRIBE_OPTS,
         )
         full_text = ""
         segment_details = []
@@ -584,13 +600,11 @@ def auto_transcribe(audio_path):
     try:
         model = load_whisper()
         segments, info = model.transcribe(
-            audio_path, language=None, beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
+            audio_path, language=None,
+            **WHISPER_TRANSCRIBE_OPTS,
         )
         text = " ".join(seg.text.strip() for seg in segments)
-        duration = info.duration
-        status = f"Nhận dạng xong ({info.language}, {duration:.0f}s). Kiểm tra và sửa transcript trước khi train."
+        status = f"Nhận dạng xong ({info.language}, {info.duration:.0f}s). Kiểm tra và sửa transcript trước khi train."
         return text.strip(), status
     except Exception as e:
         return "", f"Lỗi nhận dạng: {e}"
@@ -806,6 +820,8 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
 if __name__ == "__main__":
     print("Loading F5-TTS model...")
     load_model()
+    print("Pre-loading Whisper model...")
+    load_whisper()
     print("Starting server...")
     app.launch(
         server_name="127.0.0.1",
