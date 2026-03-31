@@ -106,14 +106,12 @@ def refresh_voices():
 
 
 # Build Gradio UI
-with gr.Blocks(
-    title="Voice Clone - Overmind",
-    theme=gr.themes.Soft(primary_hue="blue"),
-    css="""
-    .main-title { text-align: center; margin-bottom: 0.5em; }
-    .subtitle { text-align: center; color: #666; margin-bottom: 1.5em; }
-    """,
-) as app:
+CUSTOM_CSS = """
+.main-title { text-align: center; margin-bottom: 0.5em; }
+.subtitle { text-align: center; color: #666; margin-bottom: 1.5em; }
+"""
+
+with gr.Blocks(title="Voice Clone - Overmind") as app:
     gr.HTML("<h1 class='main-title'>Voice Clone</h1>")
     gr.HTML("<p class='subtitle'>Clone giọng nói và tạo audio từ văn bản</p>")
 
@@ -203,5 +201,6 @@ if __name__ == "__main__":
         server_name="127.0.0.1",
         server_port=7860,
         share=False,
-        show_api=True,
+        theme=gr.themes.Soft(primary_hue="blue"),
+        css=CUSTOM_CSS,
     )
