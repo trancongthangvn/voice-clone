@@ -1011,48 +1011,54 @@ textarea:focus, input[type="text"]:focus { border-color: var(--accent-focus) !im
 
 /* ── Accordion ── */
 .accordion .label-wrap { font-weight: 500 !important; }
+
+/* ═══════════════════════════════════
+   Light Mode Override
+   ═══════════════════════════════════ */
+body.light-mode .gradio-container {
+    background: #f8f9fb !important;
+    color: #1e293b !important;
+}
+body.light-mode .main-header h1 { color: #0f172a !important; }
+body.light-mode .main-header p { color: #64748b !important; }
+body.light-mode .panel, body.light-mode .block {
+    background: #fff !important;
+    border: 1px solid #e2e8f0 !important;
+}
+body.light-mode textarea, body.light-mode input[type="text"] {
+    background: #fff !important; color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+}
+body.light-mode textarea:focus, body.light-mode input[type="text"]:focus {
+    border-color: var(--accent) !important;
+}
+body.light-mode .tabs > .tab-nav {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+body.light-mode .tabs > .tab-nav > button { color: #64748b !important; }
+body.light-mode .tabs > .tab-nav > button.selected {
+    color: var(--accent) !important;
+    background: rgba(217,119,6,0.06) !important;
+}
+body.light-mode .markdown-text, body.light-mode .markdown-text h3 {
+    color: #1e293b !important;
+}
+body.light-mode .secondary {
+    background: rgba(99,102,241,0.08) !important;
+    color: #4f46e5 !important;
+    border: 1px solid rgba(99,102,241,0.2) !important;
+}
+body.light-mode .progress-bar { background: #e2e8f0; }
+body.light-mode ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+body.light-mode .theme-toggle {
+    background: #fff; border: 1px solid #e2e8f0;
+    color: #1e293b;
+}
 """
 
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
 () => {
-    // ── Theme Toggle ──
-    const THEMES = { dark: 'dark', light: 'light' };
-    let currentTheme = localStorage.getItem('vc-theme') || 'dark';
-
-    function applyTheme(theme) {
-        const container = document.querySelector('.gradio-container');
-        if (!container) return;
-        // Gradio uses class-based theming
-        document.documentElement.style.colorScheme = theme;
-        localStorage.setItem('vc-theme', theme);
-        currentTheme = theme;
-        // Update toggle button
-        const btn = document.getElementById('theme-toggle-btn');
-        if (btn) btn.textContent = theme === 'dark' ? '☀' : '☽';
-    }
-
-    // Inject toggle button
-    setTimeout(() => {
-        const header = document.querySelector('.main-header');
-        if (header && !document.getElementById('theme-toggle-btn')) {
-            const btn = document.createElement('button');
-            btn.id = 'theme-toggle-btn';
-            btn.className = 'theme-toggle';
-            btn.textContent = currentTheme === 'dark' ? '☀' : '☽';
-            btn.onclick = () => {
-                const next = currentTheme === 'dark' ? 'light' : 'dark';
-                applyTheme(next);
-                // Toggle Gradio dark class
-                const body = document.body;
-                if (next === 'light') { body.classList.remove('dark'); }
-                else { body.classList.add('dark'); }
-            };
-            document.body.appendChild(btn);
-        }
-        applyTheme(currentTheme);
-    }, 800);
-
     // ── Tab Routing ──
     const TAB_MAP = {
         '/tts': 0, '/library': 1, '/stt': 2, '/train': 3, '/history': 4,
@@ -1097,6 +1103,18 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
             <p>Clone giọng nói & Text-to-Speech tiếng Việt</p>
             <span class='version'>F5-TTS &bull; GPT-SoVITS &bull; Whisper</span>
         </div>
+        <button id='theme-toggle-btn' class='theme-toggle'
+                onclick="
+                    const isDark = document.body.classList.toggle('light-mode');
+                    this.textContent = isDark ? '☽' : '☀';
+                    localStorage.setItem('vc-theme', isDark ? 'light' : 'dark');
+                ">☀</button>
+        <script>
+            if (localStorage.getItem('vc-theme') === 'light') {
+                document.body.classList.add('light-mode');
+                document.getElementById('theme-toggle-btn').textContent = '☽';
+            }
+        </script>
     """)
 
     with gr.Tabs():
