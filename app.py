@@ -865,171 +865,185 @@ def get_stt_stats():
 
 CUSTOM_CSS = """
 /* ========================================
-   Voice Clone - Soft Dark Theme
+   Voice Clone - Warm Dark Theme
    Font: SVN Gilroy
-   Palette: Muted warm tones, no neon/gradient
+   Palette: Deep indigo + warm orange accent
    ======================================== */
 
-@font-face {
-    font-family: 'SVN Gilroy';
-    src: url('/static/fonts/SVN-Gilroy_Regular.otf') format('opentype');
-    font-weight: 400; font-style: normal;
-}
-@font-face {
-    font-family: 'SVN Gilroy';
-    src: url('/static/fonts/SVN-Gilroy_Medium.otf') format('opentype');
-    font-weight: 500; font-style: normal;
-}
-@font-face {
-    font-family: 'SVN Gilroy';
-    src: url('/static/fonts/SVN-Gilroy_SemiBold.otf') format('opentype');
-    font-weight: 600; font-style: normal;
-}
-@font-face {
-    font-family: 'SVN Gilroy';
-    src: url('/static/fonts/SVN-Gilroy_Bold.otf') format('opentype');
-    font-weight: 700; font-style: normal;
-}
-@font-face {
-    font-family: 'SVN Gilroy';
-    src: url('/static/fonts/SVN-Gilroy_Heavy.otf') format('opentype');
-    font-weight: 800; font-style: normal;
-}
+@font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Regular.otf') format('opentype'); font-weight: 400; }
+@font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Medium.otf') format('opentype'); font-weight: 500; }
+@font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_SemiBold.otf') format('opentype'); font-weight: 600; }
+@font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Bold.otf') format('opentype'); font-weight: 700; }
+@font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Heavy.otf') format('opentype'); font-weight: 800; }
 
 /* Global */
-.gradio-container,
-.gradio-container *:not(code):not(pre) {
-    font-family: 'SVN Gilroy', -apple-system, BlinkMacSystemFont, sans-serif !important;
+.gradio-container, .gradio-container *:not(code):not(pre) {
+    font-family: 'SVN Gilroy', -apple-system, sans-serif !important;
 }
 
 /* Header */
 .main-header {
     text-align: center;
-    padding: 1.8em 0 1.2em;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    margin-bottom: 0.5em;
+    padding: 1.5em 0 1em;
+    margin-bottom: 0.3em;
 }
 .main-header h1 {
-    font-size: 2em;
-    margin: 0;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    color: #e2e8f0;
+    font-size: 1.8em; margin: 0; font-weight: 700;
+    letter-spacing: -0.02em; color: #f1f5f9;
 }
 .main-header p {
-    color: #78819a;
-    margin: 0.3em 0 0;
-    font-size: 0.95em;
-    font-weight: 400;
+    color: #94a3b8; margin: 0.2em 0 0;
+    font-size: 0.9em; font-weight: 400;
 }
 .main-header .version {
-    display: inline-block;
-    margin-top: 0.6em;
-    padding: 3px 12px;
-    border-radius: 20px;
-    font-size: 0.72em;
-    font-weight: 500;
-    background: rgba(148,163,184,0.08);
-    color: #8896ab;
-    border: 1px solid rgba(148,163,184,0.12);
+    display: inline-block; margin-top: 0.5em;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 0.7em; font-weight: 500;
+    background: rgba(249,115,22,0.1);
+    color: #fb923c; border: 1px solid rgba(249,115,22,0.2);
 }
 
-/* Tabs - clean, no glow */
+/* Tabs */
+.tabs > .tab-nav {
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
 .tabs > .tab-nav > button {
-    font-weight: 500 !important;
-    font-size: 0.9em !important;
-    padding: 10px 18px !important;
-    border-radius: 6px 6px 0 0 !important;
-    transition: color 0.2s ease !important;
-    color: #78819a !important;
+    font-weight: 500 !important; font-size: 0.88em !important;
+    padding: 10px 16px !important;
+    border-radius: 8px 8px 0 0 !important;
+    transition: all 0.2s ease !important;
+    color: #64748b !important;
+    border-bottom: 2px solid transparent !important;
 }
 .tabs > .tab-nav > button.selected {
-    color: #cbd5e1 !important;
-    border-bottom: 2px solid #7c8db5 !important;
-    background: transparent !important;
+    color: #f97316 !important;
+    border-bottom: 2px solid #f97316 !important;
+    background: rgba(249,115,22,0.05) !important;
 }
-.tabs > .tab-nav > button:hover {
-    color: #a8b5c8 !important;
+.tabs > .tab-nav > button:hover:not(.selected) {
+    color: #cbd5e1 !important;
+    background: rgba(255,255,255,0.03) !important;
 }
 
-/* Buttons - muted, no glow */
+/* Primary button - warm orange */
 .primary {
-    background: #4a5568 !important;
-    border: 1px solid #5a6a80 !important;
+    background: #ea580c !important;
+    border: none !important;
     font-weight: 600 !important;
-    letter-spacing: 0.01em !important;
-    transition: all 0.2s ease !important;
-    box-shadow: none !important;
-    color: #e2e8f0 !important;
+    transition: all 0.15s ease !important;
+    color: #fff !important;
+    border-radius: 8px !important;
 }
 .primary:hover {
-    background: #566884 !important;
-    border-color: #6b7fa0 !important;
-    box-shadow: none !important;
-    transform: none !important;
+    background: #f97316 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(249,115,22,0.25) !important;
 }
+.primary:active {
+    transform: translateY(0) !important;
+}
+
+/* Secondary button */
+.secondary {
+    background: rgba(99,102,241,0.12) !important;
+    border: 1px solid rgba(99,102,241,0.25) !important;
+    color: #a5b4fc !important;
+    border-radius: 8px !important;
+    transition: all 0.15s ease !important;
+}
+.secondary:hover {
+    background: rgba(99,102,241,0.2) !important;
+    border-color: rgba(99,102,241,0.4) !important;
+}
+
+/* Stop/delete button */
 button.stop {
+    border-radius: 8px !important;
     transition: all 0.15s ease !important;
 }
 
-/* Cards / Panels - subtle borders */
+/* Cards / Panels */
 .panel, .block {
     border-radius: 10px !important;
-    border: 1px solid rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.05) !important;
 }
 
-/* Audio */
-.audio-container {
-    border-radius: 10px !important;
-}
+/* Audio player */
+.audio-container { border-radius: 10px !important; }
 
 /* Markdown */
 .markdown-text h3 {
     font-weight: 600 !important;
-    color: #c9d1dc !important;
+    color: #e2e8f0 !important;
     margin-bottom: 0.5em !important;
 }
 
-/* Scrollbar - thin, quiet */
+/* Inputs */
+textarea, input[type="text"] {
+    border-radius: 8px !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    transition: border-color 0.15s ease !important;
+}
+textarea:focus, input[type="text"]:focus {
+    border-color: rgba(249,115,22,0.4) !important;
+}
+
+/* Dropdown */
+.wrap .options { border-radius: 8px !important; }
+
+/* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.08);
-    border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
-/* Focus - subtle */
+/* Focus */
 *:focus-visible {
-    outline: 1.5px solid #7c8db5 !important;
+    outline: 1.5px solid rgba(249,115,22,0.5) !important;
     outline-offset: 2px !important;
 }
 
-/* Inputs & textboxes - softer */
-textarea, input[type="text"] {
-    font-weight: 400 !important;
-}
+/* Loading */
+button[disabled] { opacity: 0.55 !important; cursor: wait !important; }
 
-/* Slider */
-input[type="range"]::-webkit-slider-thumb {
-    transition: box-shadow 0.15s ease !important;
-}
+/* Accordion */
+.accordion .label-wrap { font-weight: 500 !important; color: #94a3b8 !important; }
+"""
 
-/* Loading state for buttons */
-button[disabled] {
-    opacity: 0.6 !important;
-    cursor: wait !important;
-}
+# JS for URL-based tab routing: /tts, /library, /stt, /train, /history
+CUSTOM_JS = """
+() => {
+    const TAB_MAP = {
+        '/tts': 0, '/text-to-speech': 0,
+        '/library': 1, '/thu-vien': 1,
+        '/stt': 2, '/nhan-dang': 2,
+        '/train': 3, '/huan-luyen': 3,
+        '/history': 4, '/lich-su': 4,
+    };
 
-/* Accordion headers */
-.accordion .label-wrap {
-    font-weight: 500 !important;
-    color: #a8b5c8 !important;
-}
+    function selectTab(index) {
+        const buttons = document.querySelectorAll('.tabs > .tab-nav > button');
+        if (buttons[index]) buttons[index].click();
+    }
 
-/* Status text - compact */
-.status-text textarea {
-    min-height: 28px !important;
+    // On load: check URL hash or path
+    const path = window.location.hash.replace('#', '') || window.location.pathname;
+    for (const [route, idx] of Object.entries(TAB_MAP)) {
+        if (path.endsWith(route)) { setTimeout(() => selectTab(idx), 500); break; }
+    }
+
+    // Update URL when tab clicked
+    const observer = new MutationObserver(() => {
+        const selected = document.querySelector('.tabs > .tab-nav > button.selected');
+        if (selected) {
+            const routes = ['/tts', '/library', '/stt', '/train', '/history'];
+            const buttons = [...document.querySelectorAll('.tabs > .tab-nav > button')];
+            const idx = buttons.indexOf(selected);
+            if (idx >= 0) window.history.replaceState(null, '', '#' + routes[idx]);
+        }
+    });
+    const tabNav = document.querySelector('.tabs > .tab-nav');
+    if (tabNav) observer.observe(tabNav, { subtree: true, attributes: true, attributeFilter: ['class'] });
 }
 """
 
@@ -1037,8 +1051,8 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
     gr.HTML("""
         <div class='main-header'>
             <h1>Voice Clone</h1>
-            <p>Clone giọng nói & chuyển văn bản thành giọng nói</p>
-            <span class='version'>F5-TTS + GPT-SoVITS</span>
+            <p>Clone giọng nói & Text-to-Speech tiếng Việt</p>
+            <span class='version'>F5-TTS &bull; GPT-SoVITS &bull; Whisper</span>
         </div>
     """)
 
@@ -1286,9 +1300,10 @@ if __name__ == "__main__":
         ssr_mode=False,
         allowed_paths=[str(BASE_DIR / "static")],
         theme=gr.themes.Soft(
-            primary_hue=gr.themes.colors.slate,
-            secondary_hue=gr.themes.colors.gray,
+            primary_hue=gr.themes.colors.orange,
+            secondary_hue=gr.themes.colors.indigo,
             neutral_hue=gr.themes.colors.slate,
         ),
         css=CUSTOM_CSS,
+        js=CUSTOM_JS,
     )
