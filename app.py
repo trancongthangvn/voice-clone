@@ -527,10 +527,15 @@ def get_training_log(voice_selection):
     if not voice_selection:
         return "Chọn giọng để xem log.", ""
     voices = get_library_voices()
-    choices = get_library_voice_choices()
-    if voice_selection not in choices:
-        return "Giọng không hợp lệ.", ""
-    voice = voices[choices.index(voice_selection)]
+    # Match by name prefix (status in parentheses may have changed)
+    voice = None
+    for v in voices:
+        label = f"{v['name']} ({v.get('status', '?')})"
+        if voice_selection == label or voice_selection.startswith(v['name']):
+            voice = v
+            break
+    if not voice:
+        return "Giọng không hợp lệ. Bấm 'Refresh DS' để cập nhật.", ""
     voice_id = voice["id"]
 
     # Get progress

@@ -78,6 +78,11 @@ export is_half="True"
 export version="v2"
 
 python3 GPT_SoVITS/prepare_datasets/1-get-text.py 2>&1 || mark_failed "Step 1: text processing failed"
+# Merge partitioned output files (Step 1 adds -0 suffix)
+if [ -f "$OPT_DIR/2-name2text-0.txt" ] && [ ! -f "$OPT_DIR/2-name2text.txt" ]; then
+    cat "$OPT_DIR"/2-name2text-*.txt > "$OPT_DIR/2-name2text.txt"
+    echo "Merged 2-name2text files"
+fi
 echo "Step 1 done."
 
 # =========================================
@@ -97,6 +102,11 @@ export pretrained_s2G="$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth"
 export s2config_path="$SOVITS_DIR/GPT_SoVITS/configs/s2.json"
 
 python3 GPT_SoVITS/prepare_datasets/3-get-semantic.py 2>&1 || mark_failed "Step 3: semantic extraction failed"
+# Merge partitioned semantic files
+if [ -f "$OPT_DIR/6-name2semantic-0.tsv" ] && [ ! -f "$OPT_DIR/6-name2semantic.tsv" ]; then
+    cat "$OPT_DIR"/6-name2semantic-*.tsv > "$OPT_DIR/6-name2semantic.tsv"
+    echo "Merged 6-name2semantic files"
+fi
 echo "Step 3 done."
 
 # =========================================
