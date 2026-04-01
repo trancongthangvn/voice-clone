@@ -1372,67 +1372,63 @@ if __name__ == "__main__":
         head="""
 <script>
 (function() {
-    var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
-    var LABELS = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-    var initialPath = window.location.pathname;
-
-    function findBtn(label) {
-        var all = document.querySelectorAll('button');
-        for (var i = 0; i < all.length; i++) {
-            if (all[i].textContent.trim() === label) return all[i];
-        }
-        return null;
-    }
-
-    function clickTab(label) {
-        var btn = findBtn(label);
-        if (btn) { btn.click(); return true; }
-        return false;
-    }
-
-    // 1) Initial route: poll until tabs exist, then click correct one
-    var idx = ROUTES.indexOf(initialPath);
-    if (idx >= 0) {
-        document.title = LABELS[idx] + ' - Voice Clone';
-        var t = setInterval(function() {
-            if (clickTab(LABELS[idx])) clearInterval(t);
-        }, 100);
-        setTimeout(function() { clearInterval(t); }, 30000);
-    }
-
-    // 2) Attach click listeners to tabs -> update URL (poll until tabs render)
-    var attached = false;
-    var t2 = setInterval(function() {
-        var count = 0;
-        for (var i = 0; i < LABELS.length; i++) {
-            var btn = findBtn(LABELS[i]);
-            if (btn && !btn.__vc_wired) {
-                btn.__vc_wired = true;
-                count++;
-                (function(ri, lb) {
-                    btn.addEventListener('click', function() {
-                        if (window.location.pathname !== ROUTES[ri]) {
-                            window.history.pushState(null, '', ROUTES[ri]);
-                        }
-                        document.title = lb + ' - Voice Clone';
-                    });
-                })(i, LABELS[i]);
-            }
-        }
-        if (count >= LABELS.length) { attached = true; clearInterval(t2); }
-    }, 200);
-    setTimeout(function() { clearInterval(t2); }, 30000);
-
-    // 3) Browser back/forward
-    window.addEventListener('popstate', function() {
-        var i = ROUTES.indexOf(window.location.pathname);
-        if (i >= 0) clickTab(LABELS[i]);
-    });
+    var R = ['/tts','/library','/stt','/train','/history'];
+    var L = ['Text to Speech','Thư viện giọng','Nhận dạng giọng nói','Huấn luyện','Lịch sử'];
+    var P = window.location.pathname;
 
     // Theme
-    if (localStorage.getItem('vc-theme') === 'light') {
-        document.documentElement.classList.add('light-mode');
-    }
+    if (localStorage.getItem('vc-theme')==='light') document.documentElement.classList.add('light-mode');
+
+    // Use MutationObserver to detect when Gradio renders tabs
+    var done = false;
+    var obs = new MutationObserver(function() {
+        if (done) return;
+        var btns = document.querySelectorAll('button');
+        var tabBtns = [];
+        for (var i = 0; i < btns.length; i++) {
+            var t = btns[i].textContent.trim();
+            if (L.indexOf(t) !== -1) tabBtns.push({btn: btns[i], label: t});
+        }
+        if (tabBtns.length < L.length) return; // not all tabs rendered yet
+
+        done = true;
+        obs.disconnect();
+
+        // Wire click -> pushState for each tab
+        tabBtns.forEach(function(tb) {
+            var ri = L.indexOf(tb.label);
+            tb.btn.addEventListener('click', function() {
+                window.history.pushState(null, '', R[ri]);
+                document.title = L[ri] + ' - Voice Clone';
+            });
+        });
+
+        // Initial route
+        var idx = R.indexOf(P);
+        if (idx >= 0) {
+            document.title = L[idx] + ' - Voice Clone';
+            for (var j = 0; j < tabBtns.length; j++) {
+                if (tabBtns[j].label === L[idx]) {
+                    tabBtns[j].btn.click();
+                    break;
+                }
+            }
+        }
+    });
+    obs.observe(document.documentElement, {childList: true, subtree: true});
+
+    // Fallback: stop after 30s
+    setTimeout(function() { obs.disconnect(); }, 30000);
+
+    // Back/forward
+    window.addEventListener('popstate', function() {
+        var i = R.indexOf(window.location.pathname);
+        if (i < 0) return;
+        var btns = document.querySelectorAll('button');
+        for (var j = 0; j < btns.length; j++) {
+            if (btns[j].textContent.trim() === L[i]) { btns[j].click(); break; }
+        }
+    });
 })();
 </script>
 """,
