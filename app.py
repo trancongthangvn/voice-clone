@@ -537,13 +537,20 @@ def get_training_log(voice_selection):
     progress, step = get_training_progress(voice_id)
 
     if progress == -1:
-        progress_bar = f"**FAILED** - {step}"
+        progress_bar = (
+            f'<div class="progress-bar failed"><div class="fill" style="width:100%"></div></div>'
+            f'<div class="progress-info">Thất bại - {step}</div>'
+        )
     elif progress >= 100:
-        progress_bar = "**DONE** - Huấn luyện hoàn tất!"
+        progress_bar = (
+            f'<div class="progress-bar done"><div class="fill" style="width:100%"></div></div>'
+            f'<div class="progress-info">Hoàn tất!</div>'
+        )
     else:
-        filled = int(progress / 5)
-        bar = "█" * filled + "░" * (20 - filled)
-        progress_bar = f"**[{bar}] {progress}%** - {step}"
+        progress_bar = (
+            f'<div class="progress-bar"><div class="fill" style="width:{progress}%"></div></div>'
+            f'<div class="progress-info">{progress}% - {step}</div>'
+        )
 
     # Get log tail
     log_file = VOICE_LIBRARY_DIR / voice_id / "train.log"
@@ -723,20 +730,33 @@ def transcribe_audio(audio_path, language):
 # ============================================================
 
 def get_all_training_status():
-    """Get status of all voices in library."""
+    """Get status of all voices in library with progress bars."""
     voices = get_library_voices()
     if not voices:
-        return "Chưa có giọng nào trong thư viện."
-    lines = []
+        return "Chưa có giọng nào. Vào phần **Tạo giọng mới** ở trên để bắt đầu."
+    parts = []
     for v in voices:
+        vid = v.get("id", "")
+        name = v.get("name", vid)
         status = v.get("status", "?")
-        icon = {"ready": "🟢", "training": "🟡", "failed": "🔴"}.get(status, "⚪")
         duration = v.get("duration", 0)
-        created = v.get("created_at", "")[:10]
-        lines.append(
-            f"{icon} **{v['name']}** | {status} | {duration}s audio | {created}"
-        )
-    return "\n\n".join(lines)
+
+        if status == "ready":
+            bar = f'<div class="progress-bar done"><div class="fill" style="width:100%"></div></div>'
+            info = f"**{name}** - Sẵn dùng ({duration:.0f}s)"
+        elif status == "failed":
+            bar = f'<div class="progress-bar failed"><div class="fill" style="width:100%"></div></div>'
+            info = f"**{name}** - Thất bại: {v.get('error','')}"
+        elif status == "training":
+            pct, step = get_training_progress(vid)
+            pct = max(pct, 5)
+            bar = f'<div class="progress-bar"><div class="fill" style="width:{pct}%"></div></div>'
+            info = f"**{name}** - {pct}% {step}"
+        else:
+            bar = f'<div class="progress-bar"><div class="fill" style="width:0%"></div></div>'
+            info = f"**{name}** - {status}"
+        parts.append(f"{info}\n{bar}")
+    return "\n\n".join(parts)
 
 
 def get_gpu_status():
@@ -865,9 +885,8 @@ def get_stt_stats():
 
 CUSTOM_CSS = """
 /* ========================================
-   Voice Clone - Warm Dark Theme
-   Font: SVN Gilroy
-   Palette: Deep indigo + warm orange accent
+   Voice Clone - Light/Dark Theme
+   Font: SVN Gilroy | Accent: Amber
    ======================================== */
 
 @font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Regular.otf') format('opentype'); font-weight: 400; }
@@ -876,178 +895,193 @@ CUSTOM_CSS = """
 @font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Bold.otf') format('opentype'); font-weight: 700; }
 @font-face { font-family: 'SVN Gilroy'; src: url('/static/fonts/SVN-Gilroy_Heavy.otf') format('opentype'); font-weight: 800; }
 
+:root {
+    --accent: #b45309; --accent-hover: #d97706; --accent-light: rgba(217,119,6,0.08);
+    --accent-border: rgba(217,119,6,0.15); --accent-focus: rgba(217,119,6,0.3);
+    --secondary: #6366f1; --secondary-light: rgba(99,102,241,0.1);
+    --radius: 10px; --radius-sm: 8px;
+}
+
 /* Global */
 .gradio-container, .gradio-container *:not(code):not(pre) {
     font-family: 'SVN Gilroy', -apple-system, sans-serif !important;
 }
 
-/* Header */
-.main-header {
-    text-align: center;
-    padding: 1.5em 0 1em;
-    margin-bottom: 0.3em;
+/* ── Theme toggle ── */
+.theme-toggle {
+    position: fixed; top: 16px; right: 20px; z-index: 999;
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid var(--accent-border); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; transition: all 0.2s ease;
+    background: var(--accent-light);
 }
-.main-header h1 {
-    font-size: 1.8em; margin: 0; font-weight: 700;
-    letter-spacing: -0.02em; color: #f1f5f9;
-}
-.main-header p {
-    color: #94a3b8; margin: 0.2em 0 0;
-    font-size: 0.9em; font-weight: 400;
-}
+.theme-toggle:hover { background: var(--accent-border); }
+
+/* ── Header ── */
+.main-header { text-align: center; padding: 1.5em 0 0.8em; }
+.main-header h1 { font-size: 1.8em; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
+.main-header p { margin: 0.2em 0 0; font-size: 0.88em; font-weight: 400; opacity: 0.6; }
 .main-header .version {
     display: inline-block; margin-top: 0.5em;
     padding: 3px 10px; border-radius: 20px;
     font-size: 0.7em; font-weight: 500;
-    background: rgba(217,119,6,0.08);
-    color: #d97706; border: 1px solid rgba(217,119,6,0.15);
+    background: var(--accent-light); color: var(--accent-hover);
+    border: 1px solid var(--accent-border);
 }
 
-/* Tabs */
-.tabs > .tab-nav {
-    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
-}
+/* ── Tabs ── */
+.tabs > .tab-nav { border-bottom: 1px solid rgba(128,128,128,0.15) !important; }
 .tabs > .tab-nav > button {
     font-weight: 500 !important; font-size: 0.88em !important;
-    padding: 10px 16px !important;
-    border-radius: 8px 8px 0 0 !important;
+    padding: 10px 16px !important; border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
     transition: all 0.2s ease !important;
-    color: #64748b !important;
-    border-bottom: 2px solid transparent !important;
+    border-bottom: 2px solid transparent !important; opacity: 0.55;
 }
 .tabs > .tab-nav > button.selected {
-    color: #d97706 !important;
-    border-bottom: 2px solid #d97706 !important;
-    background: rgba(217,119,6,0.04) !important;
+    color: var(--accent-hover) !important; opacity: 1;
+    border-bottom: 2px solid var(--accent-hover) !important;
 }
-.tabs > .tab-nav > button:hover:not(.selected) {
-    color: #cbd5e1 !important;
-    background: rgba(255,255,255,0.03) !important;
-}
+.tabs > .tab-nav > button:hover:not(.selected) { opacity: 0.8; }
 
-/* Primary button - warm orange */
+/* ── Buttons ── */
 .primary {
-    background: #b45309 !important;
-    border: none !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease !important;
-    color: #fff !important;
-    border-radius: 8px !important;
+    background: var(--accent) !important; border: none !important;
+    font-weight: 600 !important; color: #fff !important;
+    border-radius: var(--radius-sm) !important; transition: all 0.15s ease !important;
 }
 .primary:hover {
-    background: #d97706 !important;
+    background: var(--accent-hover) !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(217,119,6,0.2) !important;
+    box-shadow: 0 4px 12px rgba(217,119,6,0.18) !important;
 }
-.primary:active {
-    transform: translateY(0) !important;
-}
+.primary:active { transform: translateY(0) !important; }
 
-/* Secondary button */
 .secondary {
-    background: rgba(99,102,241,0.12) !important;
-    border: 1px solid rgba(99,102,241,0.25) !important;
-    color: #a5b4fc !important;
-    border-radius: 8px !important;
-    transition: all 0.15s ease !important;
+    background: var(--secondary-light) !important;
+    border: 1px solid rgba(99,102,241,0.2) !important;
+    border-radius: var(--radius-sm) !important; transition: all 0.15s ease !important;
 }
-.secondary:hover {
-    background: rgba(99,102,241,0.2) !important;
-    border-color: rgba(99,102,241,0.4) !important;
-}
+.secondary:hover { background: rgba(99,102,241,0.18) !important; }
 
-/* Stop/delete button */
-button.stop {
-    border-radius: 8px !important;
-    transition: all 0.15s ease !important;
-}
+button.stop { border-radius: var(--radius-sm) !important; transition: all 0.15s ease !important; }
+button[disabled] { opacity: 0.5 !important; cursor: wait !important; }
 
-/* Cards / Panels */
-.panel, .block {
-    border-radius: 10px !important;
-    border: 1px solid rgba(255,255,255,0.05) !important;
-}
+/* ── Panels ── */
+.panel, .block { border-radius: var(--radius) !important; }
+.audio-container { border-radius: var(--radius) !important; }
 
-/* Audio player */
-.audio-container { border-radius: 10px !important; }
-
-/* Markdown */
-.markdown-text h3 {
-    font-weight: 600 !important;
-    color: #e2e8f0 !important;
-    margin-bottom: 0.5em !important;
-}
-
-/* Inputs */
+/* ── Inputs ── */
 textarea, input[type="text"] {
-    border-radius: 8px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    transition: border-color 0.15s ease !important;
+    border-radius: var(--radius-sm) !important; transition: border-color 0.15s ease !important;
 }
-textarea:focus, input[type="text"]:focus {
-    border-color: rgba(217,119,6,0.3) !important;
+textarea:focus, input[type="text"]:focus { border-color: var(--accent-focus) !important; }
+.wrap .options { border-radius: var(--radius-sm) !important; }
+
+/* ── Progress bar ── */
+.progress-bar {
+    width: 100%; height: 8px; border-radius: 4px;
+    background: rgba(128,128,128,0.15); overflow: hidden; margin: 8px 0;
 }
+.progress-bar .fill {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+    transition: width 0.4s ease;
+}
+.progress-bar.done .fill { background: #22c55e; }
+.progress-bar.failed .fill { background: #ef4444; }
+.progress-info { font-size: 0.85em; opacity: 0.7; margin-top: 2px; }
 
-/* Dropdown */
-.wrap .options { border-radius: 8px !important; }
+/* ── Markdown ── */
+.markdown-text h3 { font-weight: 600 !important; margin-bottom: 0.5em !important; }
 
-/* Scrollbar */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.35); }
 
-/* Focus */
-*:focus-visible {
-    outline: 1.5px solid rgba(217,119,6,0.35) !important;
-    outline-offset: 2px !important;
-}
+/* ── Focus ── */
+*:focus-visible { outline: 1.5px solid var(--accent-focus) !important; outline-offset: 2px !important; }
 
-/* Loading */
-button[disabled] { opacity: 0.55 !important; cursor: wait !important; }
-
-/* Accordion */
-.accordion .label-wrap { font-weight: 500 !important; color: #94a3b8 !important; }
+/* ── Accordion ── */
+.accordion .label-wrap { font-weight: 500 !important; }
 """
 
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
 () => {
+    // ── Theme Toggle ──
+    const THEMES = { dark: 'dark', light: 'light' };
+    let currentTheme = localStorage.getItem('vc-theme') || 'dark';
+
+    function applyTheme(theme) {
+        const container = document.querySelector('.gradio-container');
+        if (!container) return;
+        // Gradio uses class-based theming
+        document.documentElement.style.colorScheme = theme;
+        localStorage.setItem('vc-theme', theme);
+        currentTheme = theme;
+        // Update toggle button
+        const btn = document.getElementById('theme-toggle-btn');
+        if (btn) btn.textContent = theme === 'dark' ? '☀' : '☽';
+    }
+
+    // Inject toggle button
+    setTimeout(() => {
+        const header = document.querySelector('.main-header');
+        if (header && !document.getElementById('theme-toggle-btn')) {
+            const btn = document.createElement('button');
+            btn.id = 'theme-toggle-btn';
+            btn.className = 'theme-toggle';
+            btn.textContent = currentTheme === 'dark' ? '☀' : '☽';
+            btn.onclick = () => {
+                const next = currentTheme === 'dark' ? 'light' : 'dark';
+                applyTheme(next);
+                // Toggle Gradio dark class
+                const body = document.body;
+                if (next === 'light') { body.classList.remove('dark'); }
+                else { body.classList.add('dark'); }
+            };
+            document.body.appendChild(btn);
+        }
+        applyTheme(currentTheme);
+    }, 800);
+
+    // ── Tab Routing ──
     const TAB_MAP = {
-        '/tts': 0, '/text-to-speech': 0,
-        '/library': 1, '/thu-vien': 1,
-        '/stt': 2, '/nhan-dang': 2,
-        '/train': 3, '/huan-luyen': 3,
-        '/history': 4, '/lich-su': 4,
+        '/tts': 0, '/library': 1, '/stt': 2, '/train': 3, '/history': 4,
     };
+    const TAB_TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    const TAB_ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
 
     function selectTab(index) {
         const buttons = document.querySelectorAll('.tabs > .tab-nav > button');
         if (buttons[index]) buttons[index].click();
     }
 
-    // On load: check URL hash or path
-    const path = window.location.hash.replace('#', '') || window.location.pathname;
+    // On load: route from hash
+    const path = window.location.hash.replace('#', '');
     for (const [route, idx] of Object.entries(TAB_MAP)) {
-        if (path.endsWith(route)) { setTimeout(() => selectTab(idx), 500); break; }
+        if (path.endsWith(route)) { setTimeout(() => selectTab(idx), 600); break; }
     }
 
-    // Update URL + page title when tab clicked
-    const TAB_TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    // Update URL + title on tab change
     const observer = new MutationObserver(() => {
         const selected = document.querySelector('.tabs > .tab-nav > button.selected');
         if (selected) {
-            const routes = ['/tts', '/library', '/stt', '/train', '/history'];
             const buttons = [...document.querySelectorAll('.tabs > .tab-nav > button')];
             const idx = buttons.indexOf(selected);
-            if (idx >= 0) {
-                window.history.replaceState(null, '', '#' + routes[idx]);
+            if (idx >= 0 && idx < TAB_ROUTES.length) {
+                window.history.replaceState(null, '', '#' + TAB_ROUTES[idx]);
                 document.title = TAB_TITLES[idx] + ' - Voice Clone';
             }
         }
     });
-    const tabNav = document.querySelector('.tabs > .tab-nav');
-    if (tabNav) observer.observe(tabNav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    setTimeout(() => {
+        const tabNav = document.querySelector('.tabs > .tab-nav');
+        if (tabNav) observer.observe(tabNav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    }, 1000);
 }
 """
 
