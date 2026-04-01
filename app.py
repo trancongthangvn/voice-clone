@@ -382,27 +382,57 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
     (voice_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
     # Create training list
-    # Transcript must be single line, no pipe characters
     clean_transcript = transcript.strip().replace("\n", " ").replace("\r", " ").replace("|", ",")
-    # Remove multiple spaces
     clean_transcript = re.sub(r'\s+', ' ', clean_transcript).strip()
 
-    # Split long audio into segments by sentences for better training
-    # GPT-SoVITS works best with 3-15s segments
-    sentences = re.split(r'(?<=[.!?。！？])\s+', clean_transcript)
     audio_path = voice_dir / "raw_audio.wav"
     duration = info["duration"]
 
-    if duration > 30 and len(sentences) > 1:
-        # Long audio: create multiple entries, estimate time per sentence proportionally
+    # Split long audio into ~10s segments (HuBERT OOM on >30s audio)
+    MAX_SEGMENT_SEC = 10
+    if duration > 30:
+        logger.info(f"Splitting {duration:.0f}s audio into ~{MAX_SEGMENT_SEC}s segments...")
+        segments_dir = voice_dir / "segments"
+        segments_dir.mkdir(exist_ok=True)
+
+        # Split audio into fixed-length chunks
+        full_data, full_sr = sf.read(str(audio_path))
+        if full_data.ndim > 1:
+            full_data = full_data.mean(axis=1)
+
+        segment_samples = int(MAX_SEGMENT_SEC * full_sr)
+        n_segments = max(1, len(full_data) // segment_samples)
+
+        # Split transcript proportionally by character count
+        sentences = re.split(r'(?<=[.!?。！？,，;；])\s*', clean_transcript)
+        sentences = [s.strip() for s in sentences if len(s.strip()) >= 3]
+
         train_lines = []
-        total_chars = sum(len(s) for s in sentences)
-        for i, sent in enumerate(sentences):
-            sent = sent.strip()
-            if len(sent) < 5:  # skip too short
+        for i in range(n_segments):
+            start = i * segment_samples
+            end = min((i + 1) * segment_samples, len(full_data))
+            seg_data = full_data[start:end]
+
+            if len(seg_data) < full_sr * 1:  # skip < 1s
                 continue
-            train_lines.append(f"{audio_path}|{voice_name}|auto|{sent}")
+
+            seg_path = segments_dir / f"seg_{i:04d}.wav"
+            sf.write(str(seg_path), seg_data, full_sr)
+
+            # Assign sentences to this segment proportionally
+            seg_start_ratio = i / n_segments
+            seg_end_ratio = (i + 1) / n_segments
+            sent_start = int(seg_start_ratio * len(sentences))
+            sent_end = int(seg_end_ratio * len(sentences))
+            seg_text = " ".join(sentences[sent_start:sent_end]).strip()
+
+            if not seg_text:
+                seg_text = f"segment {i}"
+
+            train_lines.append(f"{seg_path}|{voice_name}|auto|{seg_text}")
+
         (voice_dir / "train.list").write_text("\n".join(train_lines) + "\n")
+        logger.info(f"Split into {len(train_lines)} segments")
     else:
         # Short audio: single entry
         (voice_dir / "train.list").write_text(
