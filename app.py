@@ -1089,48 +1089,44 @@ body.light-mode .theme-toggle {
 CUSTOM_JS = """
 () => {
     var R = ['/tts','/library','/stt','/train','/history'];
-    var L = ['Text to Speech','Thư viện giọng','Nhận dạng giọng nói','Huấn luyện','Lịch sử'];
     var P = window.__VC_INIT_PATH || window.location.pathname;
+    var N = 5; // number of tabs
+
+    function getTabNav() {
+        // Gradio renders tabs inside a div with role="tablist"
+        var tablist = document.querySelector('[role="tablist"]');
+        if (!tablist) return null;
+        var btns = tablist.querySelectorAll(':scope > button');
+        return btns.length >= N ? btns : null;
+    }
 
     function setup() {
-        var btns = document.querySelectorAll('button');
-        var tabs = [];
-        for (var i = 0; i < btns.length; i++) {
-            var t = btns[i].textContent.trim();
-            var li = L.indexOf(t);
-            if (li !== -1) tabs[li] = btns[i];
-        }
-        if (Object.keys(tabs).length < L.length) {
-            setTimeout(setup, 300);
-            return;
-        }
+        var btns = getTabNav();
+        if (!btns) { setTimeout(setup, 200); return; }
 
-        // Wire click -> URL update
-        L.forEach(function(label, i) {
-            if (tabs[i]) {
-                tabs[i].addEventListener('click', function() {
-                    window.history.pushState(null, '', R[i]);
-                    document.title = L[i] + ' - Voice Clone';
+        // Wire each tab button -> pushState
+        for (var i = 0; i < N; i++) {
+            (function(idx) {
+                btns[idx].addEventListener('click', function() {
+                    window.history.pushState(null, '', R[idx]);
+                    document.title = btns[idx].textContent.trim() + ' - Voice Clone';
                 });
-            }
-        });
+            })(i);
+        }
 
-        // Initial route from saved path
+        // Route to correct tab on initial load
         var idx = R.indexOf(P);
-        if (idx >= 0 && tabs[idx]) {
-            tabs[idx].click();
-            document.title = L[idx] + ' - Voice Clone';
+        if (idx >= 0) {
+            btns[idx].click();
+            document.title = btns[idx].textContent.trim() + ' - Voice Clone';
         }
     }
-    setTimeout(setup, 500);
+    setTimeout(setup, 300);
 
     window.addEventListener('popstate', function() {
-        var i = R.indexOf(window.location.pathname);
-        if (i < 0) return;
-        var btns = document.querySelectorAll('button');
-        for (var j = 0; j < btns.length; j++) {
-            if (btns[j].textContent.trim() === L[i]) { btns[j].click(); break; }
-        }
+        var idx = R.indexOf(window.location.pathname);
+        var btns = getTabNav();
+        if (idx >= 0 && btns) btns[idx].click();
     });
 }
 """
