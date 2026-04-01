@@ -1087,7 +1087,52 @@ body.light-mode .theme-toggle {
 
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
-() => {}
+() => {
+    var R = ['/tts','/library','/stt','/train','/history'];
+    var L = ['Text to Speech','Thư viện giọng','Nhận dạng giọng nói','Huấn luyện','Lịch sử'];
+    var P = window.__VC_INIT_PATH || window.location.pathname;
+
+    function setup() {
+        var btns = document.querySelectorAll('button');
+        var tabs = [];
+        for (var i = 0; i < btns.length; i++) {
+            var t = btns[i].textContent.trim();
+            var li = L.indexOf(t);
+            if (li !== -1) tabs[li] = btns[i];
+        }
+        if (Object.keys(tabs).length < L.length) {
+            setTimeout(setup, 300);
+            return;
+        }
+
+        // Wire click -> URL update
+        L.forEach(function(label, i) {
+            if (tabs[i]) {
+                tabs[i].addEventListener('click', function() {
+                    window.history.pushState(null, '', R[i]);
+                    document.title = L[i] + ' - Voice Clone';
+                });
+            }
+        });
+
+        // Initial route from saved path
+        var idx = R.indexOf(P);
+        if (idx >= 0 && tabs[idx]) {
+            tabs[idx].click();
+            document.title = L[idx] + ' - Voice Clone';
+        }
+    }
+    setTimeout(setup, 500);
+
+    window.addEventListener('popstate', function() {
+        var i = R.indexOf(window.location.pathname);
+        if (i < 0) return;
+        var btns = document.querySelectorAll('button');
+        for (var j = 0; j < btns.length; j++) {
+            if (btns[j].textContent.trim() === L[i]) { btns[j].click(); break; }
+        }
+    });
+}
 """
 
 with gr.Blocks(title="Voice Clone - Overmind") as app:
@@ -1371,65 +1416,8 @@ if __name__ == "__main__":
         js=CUSTOM_JS,
         head="""
 <script>
-(function() {
-    var R = ['/tts','/library','/stt','/train','/history'];
-    var L = ['Text to Speech','Thư viện giọng','Nhận dạng giọng nói','Huấn luyện','Lịch sử'];
-    var P = window.location.pathname;
-
-    // Theme
-    if (localStorage.getItem('vc-theme')==='light') document.documentElement.classList.add('light-mode');
-
-    // Use MutationObserver to detect when Gradio renders tabs
-    var done = false;
-    var obs = new MutationObserver(function() {
-        if (done) return;
-        var btns = document.querySelectorAll('button');
-        var tabBtns = [];
-        for (var i = 0; i < btns.length; i++) {
-            var t = btns[i].textContent.trim();
-            if (L.indexOf(t) !== -1) tabBtns.push({btn: btns[i], label: t});
-        }
-        if (tabBtns.length < L.length) return; // not all tabs rendered yet
-
-        done = true;
-        obs.disconnect();
-
-        // Wire click -> pushState for each tab
-        tabBtns.forEach(function(tb) {
-            var ri = L.indexOf(tb.label);
-            tb.btn.addEventListener('click', function() {
-                window.history.pushState(null, '', R[ri]);
-                document.title = L[ri] + ' - Voice Clone';
-            });
-        });
-
-        // Initial route
-        var idx = R.indexOf(P);
-        if (idx >= 0) {
-            document.title = L[idx] + ' - Voice Clone';
-            for (var j = 0; j < tabBtns.length; j++) {
-                if (tabBtns[j].label === L[idx]) {
-                    tabBtns[j].btn.click();
-                    break;
-                }
-            }
-        }
-    });
-    obs.observe(document.documentElement, {childList: true, subtree: true});
-
-    // Fallback: stop after 30s
-    setTimeout(function() { obs.disconnect(); }, 30000);
-
-    // Back/forward
-    window.addEventListener('popstate', function() {
-        var i = R.indexOf(window.location.pathname);
-        if (i < 0) return;
-        var btns = document.querySelectorAll('button');
-        for (var j = 0; j < btns.length; j++) {
-            if (btns[j].textContent.trim() === L[i]) { btns[j].click(); break; }
-        }
-    });
-})();
+window.__VC_INIT_PATH = window.location.pathname;
+if (localStorage.getItem('vc-theme')==='light') document.documentElement.classList.add('light-mode');
 </script>
 """,
     )
