@@ -117,9 +117,10 @@ cfg['train']['fp16_run'] = True
 cfg['train']['num_workers'] = 4
 cfg['train']['pin_memory'] = True
 cfg['train']['gpu_numbers'] = '0'
-cfg['train']['exp_dir'] = '$OPT_DIR'
+cfg['train']['pretrained_s2G'] = '$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth'
+cfg['train']['pretrained_s2D'] = '$PRETRAINED/gsv-v2final-pretrained/s2D2333k.pth'
+cfg['model']['version'] = 'v2'
 cfg['data']['exp_dir'] = '$OPT_DIR'
-cfg['model']['pretrained'] = '$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth'
 cfg['s2_ckpt_dir'] = '$OPT_DIR'
 with open('$S2_CONFIG', 'w') as f:
     json.dump(cfg, f, indent=2)

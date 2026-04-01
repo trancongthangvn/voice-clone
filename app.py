@@ -409,20 +409,95 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
     return f"Đang huấn luyện giọng '{voice_name}' ({info['duration']:.0f}s audio)... Kiểm tra ở tab Thư viện."
 
 
+TRAINING_STEPS = [
+    ("Step 1/5: Text processing", 10),
+    ("Step 2/5: HuBERT feature extraction", 25),
+    ("Step 3/5: Semantic token extraction", 40),
+    ("Step 4/5: Train SoVITS", 70),
+    ("Step 5/5: Train GPT", 95),
+    ("Copying final models", 98),
+    ("Training COMPLETE", 100),
+    ("FAILED", -1),
+]
+
+
+def get_training_progress(voice_id):
+    """Parse training log and return progress percentage + current step."""
+    log_file = VOICE_LIBRARY_DIR / voice_id / "train.log"
+    meta_file = VOICE_LIBRARY_DIR / voice_id / "meta.json"
+
+    if meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text())
+            if meta.get("status") == "ready":
+                return 100, "Hoàn tất"
+            if meta.get("status") == "failed":
+                return -1, f"Thất bại: {meta.get('error', 'unknown')}"
+        except Exception:
+            pass
+
+    if not log_file.exists():
+        return 0, "Chờ bắt đầu..."
+
+    content = log_file.read_text()
+    progress = 0
+    current_step = "Đang khởi tạo..."
+
+    for step_name, step_pct in TRAINING_STEPS:
+        if step_name in content:
+            if step_pct == -1:
+                return -1, step_name
+            progress = step_pct
+            current_step = step_name
+
+    # Try to extract epoch progress from training output
+    import re as _re
+    epoch_matches = _re.findall(r'Epoch\s+(\d+)/(\d+)', content)
+    if epoch_matches:
+        current_epoch, total_epochs = int(epoch_matches[-1][0]), int(epoch_matches[-1][1])
+        # Determine which training phase we're in
+        if progress >= 70:  # GPT training (step 5)
+            step_progress = current_epoch / max(total_epochs, 1)
+            progress = 70 + int(step_progress * 25)
+        elif progress >= 40:  # SoVITS training (step 4)
+            step_progress = current_epoch / max(total_epochs, 1)
+            progress = 40 + int(step_progress * 30)
+
+    return min(progress, 100), current_step
+
+
 def get_training_log(voice_selection):
-    """Get training log for a voice."""
+    """Get training log with progress info."""
     if not voice_selection:
-        return "Chọn giọng để xem log."
+        return "Chọn giọng để xem log.", ""
     voices = get_library_voices()
     choices = get_library_voice_choices()
     if voice_selection not in choices:
-        return "Giọng không hợp lệ."
+        return "Giọng không hợp lệ.", ""
     voice = voices[choices.index(voice_selection)]
-    log_file = VOICE_LIBRARY_DIR / voice["id"] / "train.log"
+    voice_id = voice["id"]
+
+    # Get progress
+    progress, step = get_training_progress(voice_id)
+
+    if progress == -1:
+        progress_bar = f"**FAILED** - {step}"
+    elif progress >= 100:
+        progress_bar = "**DONE** - Huấn luyện hoàn tất!"
+    else:
+        filled = int(progress / 5)
+        bar = "█" * filled + "░" * (20 - filled)
+        progress_bar = f"**[{bar}] {progress}%** - {step}"
+
+    # Get log tail
+    log_file = VOICE_LIBRARY_DIR / voice_id / "train.log"
     if log_file.exists():
         content = log_file.read_text()
-        return content[-3000:] if len(content) > 3000 else content
-    return "Chưa có log."
+        log_tail = content[-3000:] if len(content) > 3000 else content
+    else:
+        log_tail = "Chưa có log."
+
+    return progress_bar, log_tail
 
 
 def delete_library_voice(voice_selection):
@@ -1047,9 +1122,10 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                         label="Chọn giọng xem log",
                         choices=get_library_voice_choices(), interactive=True)
                     with gr.Row():
-                        log_refresh = gr.Button("Xem log", size="sm")
+                        log_refresh = gr.Button("Xem log / Cập nhật", size="sm")
                         log_dd_refresh = gr.Button("Refresh danh sách", size="sm")
-                    train_log = gr.Textbox(label="Log", lines=15, interactive=False)
+                    train_progress = gr.Markdown(value="Chọn giọng và bấm 'Xem log'")
+                    train_log = gr.Textbox(label="Log", lines=12, interactive=False)
 
                 # Quick actions
                 with gr.Column():
@@ -1085,7 +1161,7 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
             train_btn.click(train_new_voice,
                             [train_audio, train_name, train_desc, train_transcript, train_auto_text],
                             [train_status])
-            log_refresh.click(get_training_log, [log_voice_dd], [train_log])
+            log_refresh.click(get_training_log, [log_voice_dd], [train_progress, train_log])
             log_dd_refresh.click(
                 lambda: gr.Dropdown(choices=get_library_voice_choices(),
                                     value=get_library_voice_choices()[0] if get_library_voice_choices() else None),
