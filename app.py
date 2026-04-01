@@ -1135,35 +1135,11 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
             </div>
         </nav>
         <script>
-            // Theme
             if (localStorage.getItem('vc-theme') === 'light') {
                 document.body.classList.add('light-mode');
                 var btn = document.getElementById('theme-toggle-btn');
                 if (btn) btn.textContent = '☽';
             }
-            // URL routing - select tab based on current path
-            (function() {
-                var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
-                var TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-                var path = window.location.pathname;
-                var targetIdx = ROUTES.indexOf(path);
-                if (targetIdx < 0) return;
-
-                document.title = TITLES[targetIdx] + ' - Voice Clone';
-
-                // Poll until Gradio renders tabs
-                var attempts = 0;
-                var poll = setInterval(function() {
-                    attempts++;
-                    var btns = document.querySelectorAll('button[role="tab"]');
-                    if (btns.length === 0) btns = document.querySelectorAll('.tab-nav button');
-                    if (btns.length > targetIdx) {
-                        btns[targetIdx].click();
-                        clearInterval(poll);
-                    }
-                    if (attempts > 100) clearInterval(poll);
-                }, 100);
-            })();
         </script>
     """)
 
@@ -1417,4 +1393,32 @@ if __name__ == "__main__":
         ),
         css=CUSTOM_CSS,
         js=CUSTOM_JS,
+        head="""
+<script>
+// Route to correct tab based on URL path
+window.__VC_TARGET_PATH = window.location.pathname;
+document.addEventListener('DOMContentLoaded', function() {
+    var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
+    var TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    var path = window.__VC_TARGET_PATH;
+    var idx = ROUTES.indexOf(path);
+    if (idx < 0) return;
+    document.title = TITLES[idx] + ' - Voice Clone';
+    var tries = 0;
+    var timer = setInterval(function() {
+        tries++;
+        var btns = document.querySelectorAll('button[role="tab"]');
+        if (btns.length > idx) {
+            btns[idx].click();
+            clearInterval(timer);
+        }
+        if (tries > 150) clearInterval(timer);
+    }, 100);
+});
+// Theme restore
+if (localStorage.getItem('vc-theme') === 'light') {
+    document.documentElement.classList.add('light-mode');
+}
+</script>
+""",
     )
