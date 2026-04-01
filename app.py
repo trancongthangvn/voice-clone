@@ -1014,6 +1014,23 @@ textarea, input[type="text"] {
 input[type="range"]::-webkit-slider-thumb {
     transition: box-shadow 0.15s ease !important;
 }
+
+/* Loading state for buttons */
+button[disabled] {
+    opacity: 0.6 !important;
+    cursor: wait !important;
+}
+
+/* Accordion headers */
+.accordion .label-wrap {
+    font-weight: 500 !important;
+    color: #a8b5c8 !important;
+}
+
+/* Status text - compact */
+.status-text textarea {
+    min-height: 28px !important;
+}
 """
 
 with gr.Blocks(title="Voice Clone - Overmind") as app:
@@ -1026,61 +1043,69 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
     """)
 
     with gr.Tabs():
-        # === Tab 1: Clone nhanh (F5-TTS) ===
-        with gr.Tab("Clone nhanh (F5-TTS)"):
-            gr.Markdown("Zero-shot voice clone - upload audio mẫu, không cần huấn luyện")
-            with gr.Row():
+        # ═══════════════════════════════════════
+        # Tab 1: Clone nhanh
+        # ═══════════════════════════════════════
+        with gr.Tab("Text to Speech"):
+            gr.Markdown("Upload giọng mẫu hoặc chọn giọng có sẵn, nhập văn bản cần đọc.")
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=1):
-                    gr.Markdown("### Giọng mẫu")
                     audio_input = gr.Audio(
-                        label="Upload audio mẫu (tối ưu 15-30s, nói rõ ràng)",
+                        label="Giọng mẫu (15-30s, nói rõ ràng, không nhạc nền)",
                         type="filepath", sources=["upload", "microphone"],
                     )
                     with gr.Row():
                         saved_voice = gr.Dropdown(
                             label="Hoặc chọn giọng đã lưu",
-                            choices=get_saved_voices(), interactive=True, scale=3,
+                            choices=get_saved_voices(), interactive=True, scale=4,
                         )
-                        refresh_btn = gr.Button("🔄", size="sm", scale=1, min_width=40)
-                    ref_text = gr.Textbox(
-                        label="Transcript audio mẫu (nhập để tăng chất lượng)",
-                        placeholder="Nhập chính xác nội dung audio mẫu đang nói...",
-                        lines=2,
-                    )
+                        refresh_btn = gr.Button("Refresh", size="sm", scale=1)
+                    with gr.Accordion("Transcript giọng mẫu (tùy chọn)", open=False):
+                        ref_text = gr.Textbox(
+                            label="Nội dung audio mẫu đang nói",
+                            placeholder="Nhập chính xác → chất lượng clone tốt hơn",
+                            lines=2,
+                        )
+
                 with gr.Column(scale=1):
-                    gr.Markdown("### Văn bản cần đọc")
                     gen_text = gr.Textbox(
-                        label="Nhập văn bản", lines=5,
+                        label="Văn bản cần đọc", lines=6,
                         placeholder="Nhập nội dung bạn muốn giọng clone đọc...",
                     )
-                    speed = gr.Slider(0.5, 2.0, 1.0, 0.1, label="Tốc độ")
+                    speed = gr.Slider(0.5, 2.0, 1.0, 0.1, label="Tốc độ đọc")
                     gen_btn = gr.Button("Tạo Audio", variant="primary", size="lg")
-            with gr.Row():
-                output_audio = gr.Audio(label="Kết quả", type="filepath")
-                status_text = gr.Textbox(label="Trạng thái", interactive=False)
+                    output_audio = gr.Audio(label="Kết quả", type="filepath")
+                    status_text = gr.Textbox(label="Trạng thái", interactive=False, max_lines=1)
 
             gen_btn.click(clone_voice_f5,
                           [audio_input, ref_text, gen_text, saved_voice, speed],
                           [output_audio, status_text])
             refresh_btn.click(refresh_voices, outputs=[saved_voice])
 
-        # === Tab 2: Thư viện giọng (GPT-SoVITS) ===
+        # ═══════════════════════════════════════
+        # Tab 2: Thư viện giọng
+        # ═══════════════════════════════════════
         with gr.Tab("Thư viện giọng"):
-            gr.Markdown("Giọng nói chất lượng cao đã huấn luyện - chọn giọng và nhập text")
-            with gr.Row():
+            lib_voices = get_library_voice_choices()
+            if not lib_voices:
+                gr.Markdown(
+                    "**Chưa có giọng nào trong thư viện.**\n\n"
+                    "Vào tab **Huấn luyện** để tạo giọng đầu tiên."
+                )
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=1):
                     lib_voice_dd = gr.Dropdown(
-                        label="Chọn giọng",
-                        choices=get_library_voice_choices(), interactive=True,
+                        label="Chọn giọng đã huấn luyện",
+                        choices=lib_voices, interactive=True,
                     )
                     lib_refresh = gr.Button("Refresh danh sách", size="sm")
-                    lib_text = gr.Textbox(label="Văn bản cần đọc", lines=5,
-                                          placeholder="Nhập text...")
+                    lib_text = gr.Textbox(label="Văn bản cần đọc", lines=6,
+                                          placeholder="Nhập nội dung cần đọc bằng giọng đã chọn...")
                     lib_speed = gr.Slider(0.5, 2.0, 1.0, 0.1, label="Tốc độ")
                     lib_gen_btn = gr.Button("Tạo Audio", variant="primary", size="lg")
                 with gr.Column(scale=1):
                     lib_output = gr.Audio(label="Kết quả", type="filepath")
-                    lib_status = gr.Textbox(label="Trạng thái", interactive=False)
+                    lib_status = gr.Textbox(label="Trạng thái", interactive=False, max_lines=2)
 
             lib_gen_btn.click(library_tts,
                               [lib_voice_dd, lib_text, lib_speed],
@@ -1090,144 +1115,126 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                 return gr.Dropdown(choices=choices, value=choices[0] if choices else None)
             lib_refresh.click(refresh_lib_voices, outputs=[lib_voice_dd])
 
-        # === Tab 3: Voice to Text (STT) ===
-        with gr.Tab("Voice to Text"):
-            gr.Markdown("Chuyển giọng nói thành văn bản (Whisper AI) - **càng dùng càng chuẩn**")
-            stt_auto_text = gr.State("")  # store original auto text for comparison
-            with gr.Row():
+        # ═══════════════════════════════════════
+        # Tab 3: Nhận dạng giọng nói
+        # ═══════════════════════════════════════
+        with gr.Tab("Nhận dạng giọng nói"):
+            gr.Markdown("Chuyển audio thành văn bản. Sửa kết quả sai giúp AI tự học, càng dùng càng chuẩn.")
+            stt_auto_text = gr.State("")
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=1):
                     stt_audio = gr.Audio(
-                        label="Upload audio cần chuyển thành text",
+                        label="Upload audio",
                         type="filepath", sources=["upload", "microphone"],
                     )
                     stt_lang = gr.Dropdown(
-                        label="Ngôn ngữ",
+                        label="Ngôn ngữ", value="Auto", interactive=True,
                         choices=["Auto", "vi", "en", "zh", "ja", "ko", "fr"],
-                        value="Auto", interactive=True,
                     )
-                    stt_btn = gr.Button("Chuyển thành text", variant="primary", size="lg")
+                    stt_btn = gr.Button("Nhận dạng", variant="primary", size="lg")
                 with gr.Column(scale=1):
                     stt_result = gr.Textbox(
-                        label="Kết quả text (sửa nếu sai → bấm Lưu để hệ thống tự học)",
-                        lines=8, interactive=True,
+                        label="Kết quả (sửa nếu sai)",
+                        lines=10, interactive=True,
                     )
-                    stt_details = gr.Markdown(label="Chi tiết")
+                    stt_details = gr.Markdown()
+
+            with gr.Row():
+                stt_save_btn = gr.Button("Lưu bản sửa (giúp AI học)", variant="secondary")
+                stt_save_status = gr.Textbox(show_label=False, interactive=False, max_lines=1)
+            stt_stats = gr.Markdown(value=get_stt_stats)
 
             def stt_and_store(audio, lang):
                 text, details = transcribe_audio(audio, lang)
-                return text, details, text  # 3rd output = store auto text
+                return text, details, text
 
             stt_btn.click(stt_and_store, [stt_audio, stt_lang],
                           [stt_result, stt_details, stt_auto_text])
+            stt_save_btn.click(save_stt_correction,
+                               [stt_audio, stt_auto_text, stt_result],
+                               [stt_save_status])
 
+        # ═══════════════════════════════════════
+        # Tab 4: Huấn luyện
+        # ═══════════════════════════════════════
+        with gr.Tab("Huấn luyện"):
             with gr.Row():
-                stt_save_btn = gr.Button("Lưu correction (giúp AI học)", variant="secondary")
-                stt_save_status = gr.Textbox(label="", interactive=False)
-            stt_stats = gr.Markdown(value=get_stt_stats)
-
-            stt_save_btn.click(
-                save_stt_correction,
-                [stt_audio, stt_auto_text, stt_result],
-                [stt_save_status],
-            )
-
-            gr.Markdown(
-                "**Cách hoạt động:** Upload audio → Whisper nhận dạng → "
-                "Bạn sửa chỗ sai → Bấm 'Lưu correction' → "
-                "Hệ thống tích lũy dữ liệu → Fine-tune Whisper → Nhận dạng càng chuẩn."
-            )
-
-        # === Tab 4: Training Dashboard ===
-        with gr.Tab("Training Dashboard"):
-            with gr.Row():
-                # Left: Train new voice
-                with gr.Column(scale=1):
-                    gr.Markdown("### Huấn luyện giọng mới")
-                    train_audio = gr.Audio(label="Audio giọng nói (1-3 phút, sạch)",
+                with gr.Column(scale=3):
+                    gr.Markdown("### Tạo giọng mới")
+                    train_audio = gr.Audio(label="Audio giọng nói (sạch, không nhạc nền)",
                                            type="filepath", sources=["upload"])
-                    train_name = gr.Textbox(label="Tên giọng", placeholder="vd: MC Thời sự")
-                    train_desc = gr.Textbox(label="Mô tả (tùy chọn)",
-                                            placeholder="Giọng nam miền Bắc, trầm ấm...")
+                    with gr.Row():
+                        train_name = gr.Textbox(label="Tên giọng", placeholder="vd: MC Thời sự", scale=2)
+                        train_desc = gr.Textbox(label="Mô tả", placeholder="Nam, miền Bắc...", scale=2)
                     stt_train_btn = gr.Button("Nhận dạng audio thành text", variant="secondary")
                     train_transcript = gr.Textbox(
-                        label="Transcript (bấm nút trên để nhận dạng, sửa nếu sai)",
-                        placeholder="Bấm 'Nhận dạng audio thành text' hoặc nhập thủ công...",
-                        lines=5,
+                        label="Transcript",
+                        placeholder="Bấm nút trên để tự động nhận dạng, hoặc nhập thủ công.\nSửa chỗ sai trước khi huấn luyện.",
+                        lines=6,
                     )
                     train_auto_text = gr.State("")
-                    with gr.Row():
-                        train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary", size="lg")
-                    train_status = gr.Textbox(label="Trạng thái", interactive=False)
+                    train_btn = gr.Button("Bắt đầu huấn luyện", variant="primary", size="lg")
+                    train_status = gr.Textbox(label="Trạng thái", interactive=False, max_lines=2)
 
                     def transcribe_for_training(audio_path):
                         if not audio_path:
                             return "", "Upload audio trước.", ""
-                        text, status = auto_transcribe(audio_path)
-                        return text, status, text
+                        text, st = auto_transcribe(audio_path)
+                        return text, st, text
 
-                    stt_train_btn.click(
-                        fn=transcribe_for_training,
-                        inputs=[train_audio],
-                        outputs=[train_transcript, train_status, train_auto_text],
-                    )
+                    stt_train_btn.click(transcribe_for_training, [train_audio],
+                                        [train_transcript, train_status, train_auto_text])
 
-                # Right: Monitor & Status
-                with gr.Column(scale=1):
-                    gr.Markdown("### Bảng điều khiển")
-                    with gr.Row():
-                        gpu_status = gr.Markdown(value=get_gpu_status)
-                        disk_status = gr.Markdown(value=get_disk_status)
+                with gr.Column(scale=2):
+                    gr.Markdown("### Hệ thống")
+                    gpu_status = gr.Markdown(value=get_gpu_status)
+                    disk_status = gr.Markdown(value=get_disk_status)
                     dash_stats = gr.Markdown(value=get_dataset_stats)
                     dash_refresh = gr.Button("Refresh", size="sm")
 
-                    gr.Markdown("### Trạng thái tất cả giọng")
-                    all_voices_status = gr.Markdown(value=get_all_training_status)
-
             gr.Markdown("---")
+            gr.Markdown("### Tiến trình & Log")
             with gr.Row():
-                # Training log
-                with gr.Column():
-                    gr.Markdown("### Training Log")
-                    log_voice_dd = gr.Dropdown(
-                        label="Chọn giọng xem log",
-                        choices=get_library_voice_choices(), interactive=True)
+                with gr.Column(scale=1):
+                    all_voices_status = gr.Markdown(value=get_all_training_status)
+                with gr.Column(scale=2):
                     with gr.Row():
-                        log_refresh = gr.Button("Xem log / Cập nhật", size="sm")
-                        log_dd_refresh = gr.Button("Refresh danh sách", size="sm")
-                    train_progress = gr.Markdown(value="Chọn giọng và bấm 'Xem log'")
-                    train_log = gr.Textbox(label="Log", lines=12, interactive=False)
+                        log_voice_dd = gr.Dropdown(
+                            label="Chọn giọng", choices=get_library_voice_choices(), interactive=True, scale=3)
+                        log_refresh = gr.Button("Cập nhật", size="sm", scale=1)
+                        log_dd_refresh = gr.Button("Refresh DS", size="sm", scale=1)
+                    train_progress = gr.Markdown(value="Chọn giọng rồi bấm Cập nhật")
+                    train_log = gr.Textbox(label="Log", lines=10, interactive=False)
 
-                # Quick actions
-                with gr.Column():
-                    gr.Markdown("### Quản lý nhanh")
-                    with gr.Accordion("Giọng nhanh (F5-TTS)", open=False):
+            with gr.Accordion("Quản lý giọng & model", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("**Lưu giọng nhanh (F5-TTS)**")
                         with gr.Row():
                             voice_upload = gr.Audio(label="Audio", type="filepath",
                                                     sources=["upload", "microphone"])
                             voice_name = gr.Textbox(label="Tên", placeholder="vd: giang_vien")
-                        save_btn = gr.Button("Lưu giọng nhanh", variant="primary", size="sm")
-                        mgmt_status = gr.Textbox(label="Trạng thái", interactive=False)
+                        save_btn = gr.Button("Lưu", variant="primary", size="sm")
+                        mgmt_status = gr.Textbox(show_label=False, interactive=False, max_lines=1)
                         save_btn.click(save_voice, [voice_upload, voice_name], [mgmt_status])
-
-                    with gr.Accordion("Xóa giọng", open=False):
-                        del_voice_dd = gr.Dropdown(label="Giọng nhanh (F5-TTS)",
-                                                   choices=get_saved_voices(), interactive=True)
+                    with gr.Column():
+                        gr.Markdown("**Xóa giọng**")
+                        del_voice_dd = gr.Dropdown(label="F5-TTS", choices=get_saved_voices(), interactive=True)
                         del_btn = gr.Button("Xóa", variant="stop", size="sm")
-                        del_lib_dd = gr.Dropdown(label="Thư viện (GPT-SoVITS)",
-                                                 choices=get_library_voice_choices(), interactive=True)
+                        del_lib_dd = gr.Dropdown(label="GPT-SoVITS", choices=get_library_voice_choices(), interactive=True)
                         del_lib_btn = gr.Button("Xóa", variant="stop", size="sm")
-                        del_status = gr.Textbox(label="Trạng thái", interactive=False)
+                        del_status = gr.Textbox(show_label=False, interactive=False, max_lines=1)
                         del_btn.click(delete_voice, [del_voice_dd], [del_status, del_voice_dd])
                         del_lib_btn.click(delete_library_voice, [del_lib_dd], [del_status, del_lib_dd])
-
-                    with gr.Accordion("F5-TTS Model Version", open=False):
+                    with gr.Column():
+                        gr.Markdown("**F5-TTS Model**")
                         model_dd = gr.Dropdown(label="Version", choices=get_model_versions(),
                                                value=CURRENT_MODEL_VERSION, interactive=True)
-                        switch_btn = gr.Button("Chuyển model", variant="primary", size="sm")
-                        model_status = gr.Textbox(label="Trạng thái", interactive=False)
+                        switch_btn = gr.Button("Chuyển", variant="primary", size="sm")
+                        model_status = gr.Textbox(show_label=False, interactive=False, max_lines=1)
                         switch_btn.click(switch_model, [model_dd], [model_status])
 
-            # Wire up training (pass auto_text for correction tracking)
+            # Wire training
             train_btn.click(train_new_voice,
                             [train_audio, train_name, train_desc, train_transcript, train_auto_text],
                             [train_status])
@@ -1239,7 +1246,9 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
             dash_refresh.click(refresh_dashboard,
                                outputs=[all_voices_status, gpu_status, disk_status, dash_stats])
 
-        # === Tab 5: Lịch sử ===
+        # ═══════════════════════════════════════
+        # Tab 5: Lịch sử
+        # ═══════════════════════════════════════
         with gr.Tab("Lịch sử"):
             history_md = gr.Markdown(value=get_history_display)
             history_refresh = gr.Button("Refresh")
