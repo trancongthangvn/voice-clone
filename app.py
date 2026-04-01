@@ -429,14 +429,14 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
             if not seg_text:
                 seg_text = f"segment {i}"
 
-            train_lines.append(f"{seg_path}|{voice_name}|auto|{seg_text}")
+            train_lines.append(f"{seg_path}|{voice_name}|zh|{seg_text}")
 
         (voice_dir / "train.list").write_text("\n".join(train_lines) + "\n")
         logger.info(f"Split into {len(train_lines)} segments")
     else:
         # Short audio: single entry
         (voice_dir / "train.list").write_text(
-            f"{audio_path}|{voice_name}|auto|{clean_transcript}\n"
+            f"{audio_path}|{voice_name}|zh|{clean_transcript}\n"
         )
 
     # Start training in background
