@@ -386,10 +386,15 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
         f"{voice_dir / 'raw_audio.wav'}|{voice_name}|auto|{transcript.strip()}\n"
     )
 
-    # Start training in background (proper resource handling)
+    # Start training in background
     train_script = BASE_DIR / "engines" / "train_voice.sh"
     if not train_script.exists():
         return "Lỗi: không tìm thấy script huấn luyện."
+
+    # Free GPU memory: unload Whisper before training (saves ~4GB VRAM)
+    logger.info("Unloading Whisper to free VRAM for training...")
+    models.unload_whisper()
+    torch.cuda.empty_cache()
 
     # Start training subprocess (daemonized, log to file)
     subprocess.Popen(
@@ -397,9 +402,9 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
         stdout=open(voice_dir / "train.log", "w"),
         stderr=subprocess.STDOUT,
         cwd=str(BASE_DIR / "engines" / "GPT-SoVITS"),
-        start_new_session=True,  # Detach from parent
+        start_new_session=True,
     )
-    logger.info(f"Training started: {voice_id}")
+    logger.info(f"Training started: {voice_id} (Whisper unloaded, will reload on next STT request)")
 
     return f"Đang huấn luyện giọng '{voice_name}' ({info['duration']:.0f}s audio)... Kiểm tra ở tab Thư viện."
 
@@ -1041,8 +1046,10 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                     log_voice_dd = gr.Dropdown(
                         label="Chọn giọng xem log",
                         choices=get_library_voice_choices(), interactive=True)
-                    log_refresh = gr.Button("Xem log", size="sm")
-                    train_log = gr.Textbox(label="Log", lines=12, interactive=False)
+                    with gr.Row():
+                        log_refresh = gr.Button("Xem log", size="sm")
+                        log_dd_refresh = gr.Button("Refresh danh sách", size="sm")
+                    train_log = gr.Textbox(label="Log", lines=15, interactive=False)
 
                 # Quick actions
                 with gr.Column():
@@ -1079,6 +1086,10 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
                             [train_audio, train_name, train_desc, train_transcript, train_auto_text],
                             [train_status])
             log_refresh.click(get_training_log, [log_voice_dd], [train_log])
+            log_dd_refresh.click(
+                lambda: gr.Dropdown(choices=get_library_voice_choices(),
+                                    value=get_library_voice_choices()[0] if get_library_voice_choices() else None),
+                outputs=[log_voice_dd])
             dash_refresh.click(refresh_dashboard,
                                outputs=[all_voices_status, gpu_status, disk_status, dash_stats])
 

@@ -48,6 +48,17 @@ export CUDA_VISIBLE_DEVICES="0"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 export TOKENIZERS_PARALLELISM="true"
 
+# Free GPU memory: unload Whisper + F5-TTS from main app before training
+echo "=== Freeing GPU memory for training ==="
+python3 -c "
+import urllib.request
+try:
+    urllib.request.urlopen('http://127.0.0.1:7860/gradio_api/queue/join', timeout=2)
+except: pass
+" 2>/dev/null || true
+# Wait a moment for GPU memory to settle
+sleep 2
+
 OPT_DIR="$SOVITS_DIR/logs/$VOICE_ID"
 mkdir -p "$OPT_DIR"
 
@@ -100,11 +111,12 @@ import json
 with open('$SOVITS_DIR/GPT_SoVITS/configs/s2.json') as f:
     cfg = json.load(f)
 cfg['train']['epochs'] = 10
-cfg['train']['batch_size'] = 12
+cfg['train']['batch_size'] = 8
 cfg['train']['save_every_epoch'] = 5
 cfg['train']['fp16_run'] = True
 cfg['train']['num_workers'] = 4
 cfg['train']['pin_memory'] = True
+cfg['train']['gpu_numbers'] = '0'
 cfg['train']['exp_dir'] = '$OPT_DIR'
 cfg['data']['exp_dir'] = '$OPT_DIR'
 cfg['model']['pretrained'] = '$PRETRAINED/gsv-v2final-pretrained/s2G2333k.pth'
@@ -128,8 +140,8 @@ python3 -c "
 import yaml
 with open('$SOVITS_DIR/GPT_SoVITS/configs/s1longer.yaml') as f:
     cfg = yaml.safe_load(f)
-cfg['train']['epochs'] = 20
-cfg['train']['batch_size'] = 12
+cfg['train']['epochs'] = 15
+cfg['train']['batch_size'] = 8
 cfg['train']['save_every_epoch'] = 5
 cfg['train']['precision'] = '16-mixed'
 cfg['train']['num_workers'] = 4
