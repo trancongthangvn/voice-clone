@@ -1087,42 +1087,7 @@ body.light-mode .theme-toggle {
 
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
-() => {
-    const ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
-    const LABELS = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-
-    function findTabButton(label) {
-        var btns = document.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {
-            if (btns[i].textContent.trim() === label) return btns[i];
-        }
-        return null;
-    }
-
-    // Watch clicks on tab buttons -> update URL
-    function watchTabs() {
-        var found = 0;
-        LABELS.forEach((label, i) => {
-            var btn = findTabButton(label);
-            if (btn) {
-                found++;
-                btn.addEventListener('click', () => {
-                    if (window.location.pathname !== ROUTES[i]) {
-                        window.history.pushState(null, '', ROUTES[i]);
-                        document.title = LABELS[i] + ' - Voice Clone';
-                    }
-                });
-            }
-        });
-        if (found < LABELS.length) setTimeout(watchTabs, 500);
-    }
-    setTimeout(watchTabs, 1000);
-
-    window.addEventListener('popstate', () => {
-        var i = ROUTES.indexOf(window.location.pathname);
-        if (i >= 0) { var btn = findTabButton(LABELS[i]); if (btn) btn.click(); }
-    });
-}
+() => {}
 """
 
 with gr.Blocks(title="Voice Clone - Overmind") as app:
@@ -1406,40 +1371,69 @@ if __name__ == "__main__":
         js=CUSTOM_JS,
         head="""
 <script>
-window.__VC_PATH = window.location.pathname;
-window.__VC_ROUTED = false;
-
-// Gradio 6 renders client-side - buttons don't exist at DOMContentLoaded
-// Must poll continuously until Gradio finishes rendering
-(function vcRoute() {
+(function() {
     var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
-    var TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-    var idx = ROUTES.indexOf(window.__VC_PATH);
-    if (idx < 0) return;
-    document.title = TITLES[idx] + ' - Voice Clone';
+    var LABELS = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    var initialPath = window.location.pathname;
 
-    var target = TITLES[idx];
-    var tries = 0;
-    var timer = setInterval(function() {
-        if (window.__VC_ROUTED) { clearInterval(timer); return; }
-        tries++;
-        var btns = document.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {
-            if (btns[i].textContent.trim() === target) {
-                btns[i].click();
-                window.__VC_ROUTED = true;
-                clearInterval(timer);
-                return;
+    function findBtn(label) {
+        var all = document.querySelectorAll('button');
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].textContent.trim() === label) return all[i];
+        }
+        return null;
+    }
+
+    function clickTab(label) {
+        var btn = findBtn(label);
+        if (btn) { btn.click(); return true; }
+        return false;
+    }
+
+    // 1) Initial route: poll until tabs exist, then click correct one
+    var idx = ROUTES.indexOf(initialPath);
+    if (idx >= 0) {
+        document.title = LABELS[idx] + ' - Voice Clone';
+        var t = setInterval(function() {
+            if (clickTab(LABELS[idx])) clearInterval(t);
+        }, 100);
+        setTimeout(function() { clearInterval(t); }, 30000);
+    }
+
+    // 2) Attach click listeners to tabs -> update URL (poll until tabs render)
+    var attached = false;
+    var t2 = setInterval(function() {
+        var count = 0;
+        for (var i = 0; i < LABELS.length; i++) {
+            var btn = findBtn(LABELS[i]);
+            if (btn && !btn.__vc_wired) {
+                btn.__vc_wired = true;
+                count++;
+                (function(ri, lb) {
+                    btn.addEventListener('click', function() {
+                        if (window.location.pathname !== ROUTES[ri]) {
+                            window.history.pushState(null, '', ROUTES[ri]);
+                        }
+                        document.title = lb + ' - Voice Clone';
+                    });
+                })(i, LABELS[i]);
             }
         }
-        if (tries > 300) clearInterval(timer); // 30s timeout
-    }, 100);
-})();
+        if (count >= LABELS.length) { attached = true; clearInterval(t2); }
+    }, 200);
+    setTimeout(function() { clearInterval(t2); }, 30000);
 
-// Theme
-if (localStorage.getItem('vc-theme') === 'light') {
-    document.documentElement.classList.add('light-mode');
-}
+    // 3) Browser back/forward
+    window.addEventListener('popstate', function() {
+        var i = ROUTES.indexOf(window.location.pathname);
+        if (i >= 0) clickTab(LABELS[i]);
+    });
+
+    // Theme
+    if (localStorage.getItem('vc-theme') === 'light') {
+        document.documentElement.classList.add('light-mode');
+    }
+})();
 </script>
 """,
     )
