@@ -1090,36 +1090,57 @@ CUSTOM_JS = """
 () => {
     const ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
     const TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    let initialized = false;
 
     function selectTab(idx) {
         const btns = document.querySelectorAll('.tabs > .tab-nav > button');
-        if (btns[idx]) btns[idx].click();
+        if (btns.length > 0 && btns[idx]) { btns[idx].click(); return true; }
+        return false;
     }
 
-    // On load: match URL path to tab
-    const path = window.location.pathname;
-    const idx = ROUTES.indexOf(path);
-    if (idx >= 0) setTimeout(() => selectTab(idx), 600);
+    // Wait for Gradio tabs to render, then route
+    function waitAndRoute() {
+        const path = window.location.pathname;
+        const idx = ROUTES.indexOf(path);
+        if (idx < 0) return;
+
+        // Poll until tabs exist (Gradio renders async)
+        let attempts = 0;
+        const poll = setInterval(() => {
+            attempts++;
+            if (selectTab(idx)) {
+                clearInterval(poll);
+                document.title = TITLES[idx] + ' - Voice Clone';
+            }
+            if (attempts > 50) clearInterval(poll); // give up after 5s
+        }, 100);
+    }
+    waitAndRoute();
 
     // Watch tab changes -> update URL + title
-    const observer = new MutationObserver(() => {
-        const sel = document.querySelector('.tabs > .tab-nav > button.selected');
-        if (!sel) return;
-        const btns = [...document.querySelectorAll('.tabs > .tab-nav > button')];
-        const i = btns.indexOf(sel);
-        if (i >= 0 && i < ROUTES.length) {
-            if (window.location.pathname !== ROUTES[i]) {
-                window.history.pushState(null, '', ROUTES[i]);
-            }
-            document.title = TITLES[i] + ' - Voice Clone';
-        }
-    });
-    setTimeout(() => {
+    function setupObserver() {
         const nav = document.querySelector('.tabs > .tab-nav');
-        if (nav) observer.observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    }, 800);
+        if (!nav) { setTimeout(setupObserver, 500); return; }
+        if (initialized) return;
+        initialized = true;
 
-    // Handle browser back/forward
+        const observer = new MutationObserver(() => {
+            const sel = document.querySelector('.tabs > .tab-nav > button.selected');
+            if (!sel) return;
+            const btns = [...document.querySelectorAll('.tabs > .tab-nav > button')];
+            const i = btns.indexOf(sel);
+            if (i >= 0 && i < ROUTES.length) {
+                if (window.location.pathname !== ROUTES[i]) {
+                    window.history.pushState(null, '', ROUTES[i]);
+                }
+                document.title = TITLES[i] + ' - Voice Clone';
+            }
+        });
+        observer.observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    }
+    setupObserver();
+
+    // Browser back/forward
     window.addEventListener('popstate', () => {
         const i = ROUTES.indexOf(window.location.pathname);
         if (i >= 0) selectTab(i);
