@@ -1088,40 +1088,42 @@ body.light-mode .theme-toggle {
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
 () => {
-    // ── Tab Routing ──
-    const TAB_MAP = {
-        '/tts': 0, '/library': 1, '/stt': 2, '/train': 3, '/history': 4,
-    };
-    const TAB_TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-    const TAB_ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
+    const ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
+    const TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
 
-    function selectTab(index) {
-        const buttons = document.querySelectorAll('.tabs > .tab-nav > button');
-        if (buttons[index]) buttons[index].click();
+    function selectTab(idx) {
+        const btns = document.querySelectorAll('.tabs > .tab-nav > button');
+        if (btns[idx]) btns[idx].click();
     }
 
-    // On load: route from hash
-    const path = window.location.hash.replace('#', '');
-    for (const [route, idx] of Object.entries(TAB_MAP)) {
-        if (path.endsWith(route)) { setTimeout(() => selectTab(idx), 600); break; }
-    }
+    // On load: match URL path to tab
+    const path = window.location.pathname;
+    const idx = ROUTES.indexOf(path);
+    if (idx >= 0) setTimeout(() => selectTab(idx), 600);
 
-    // Update URL + title on tab change
+    // Watch tab changes -> update URL + title
     const observer = new MutationObserver(() => {
-        const selected = document.querySelector('.tabs > .tab-nav > button.selected');
-        if (selected) {
-            const buttons = [...document.querySelectorAll('.tabs > .tab-nav > button')];
-            const idx = buttons.indexOf(selected);
-            if (idx >= 0 && idx < TAB_ROUTES.length) {
-                window.history.replaceState(null, '', '#' + TAB_ROUTES[idx]);
-                document.title = TAB_TITLES[idx] + ' - Voice Clone';
+        const sel = document.querySelector('.tabs > .tab-nav > button.selected');
+        if (!sel) return;
+        const btns = [...document.querySelectorAll('.tabs > .tab-nav > button')];
+        const i = btns.indexOf(sel);
+        if (i >= 0 && i < ROUTES.length) {
+            if (window.location.pathname !== ROUTES[i]) {
+                window.history.pushState(null, '', ROUTES[i]);
             }
+            document.title = TITLES[i] + ' - Voice Clone';
         }
     });
     setTimeout(() => {
-        const tabNav = document.querySelector('.tabs > .tab-nav');
-        if (tabNav) observer.observe(tabNav, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    }, 1000);
+        const nav = document.querySelector('.tabs > .tab-nav');
+        if (nav) observer.observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    }, 800);
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', () => {
+        const i = ROUTES.indexOf(window.location.pathname);
+        if (i >= 0) selectTab(i);
+    });
 }
 """
 
