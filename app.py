@@ -381,10 +381,33 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
     }
     (voice_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
-    # Create training list (use "auto" for language detection)
-    (voice_dir / "train.list").write_text(
-        f"{voice_dir / 'raw_audio.wav'}|{voice_name}|auto|{transcript.strip()}\n"
-    )
+    # Create training list
+    # Transcript must be single line, no pipe characters
+    clean_transcript = transcript.strip().replace("\n", " ").replace("\r", " ").replace("|", ",")
+    # Remove multiple spaces
+    clean_transcript = re.sub(r'\s+', ' ', clean_transcript).strip()
+
+    # Split long audio into segments by sentences for better training
+    # GPT-SoVITS works best with 3-15s segments
+    sentences = re.split(r'(?<=[.!?。！？])\s+', clean_transcript)
+    audio_path = voice_dir / "raw_audio.wav"
+    duration = info["duration"]
+
+    if duration > 30 and len(sentences) > 1:
+        # Long audio: create multiple entries, estimate time per sentence proportionally
+        train_lines = []
+        total_chars = sum(len(s) for s in sentences)
+        for i, sent in enumerate(sentences):
+            sent = sent.strip()
+            if len(sent) < 5:  # skip too short
+                continue
+            train_lines.append(f"{audio_path}|{voice_name}|auto|{sent}")
+        (voice_dir / "train.list").write_text("\n".join(train_lines) + "\n")
+    else:
+        # Short audio: single entry
+        (voice_dir / "train.list").write_text(
+            f"{audio_path}|{voice_name}|auto|{clean_transcript}\n"
+        )
 
     # Start training in background
     train_script = BASE_DIR / "engines" / "train_voice.sh"
@@ -1190,13 +1213,13 @@ if __name__ == "__main__":
 
     logger.info("Loading F5-TTS model...")
     load_model()
-    logger.info("Pre-loading Whisper model...")
-    load_whisper()
+    # Whisper: lazy load on first STT request (saves ~4.5GB VRAM)
+    # Auto-unload after 2 min idle
 
     # Start background memory monitor
     start_memory_monitor(interval=30)
 
-    logger.info("All models loaded. GPU queue active. Starting server...")
+    logger.info("F5-TTS loaded. Whisper on-demand. GPU queue active.")
     app.launch(
         server_name="127.0.0.1",
         server_port=7860,
