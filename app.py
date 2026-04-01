@@ -1088,28 +1088,39 @@ body.light-mode .theme-toggle {
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
 () => {
-    // Update URL when user clicks tabs
     const ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
-    const TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    const LABELS = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
 
-    function watchTabs() {
-        const btns = document.querySelectorAll('button[role="tab"]');
-        if (btns.length === 0) { setTimeout(watchTabs, 500); return; }
-        btns.forEach((btn, i) => {
-            btn.addEventListener('click', () => {
-                if (i < ROUTES.length && window.location.pathname !== ROUTES[i]) {
-                    window.history.pushState(null, '', ROUTES[i]);
-                    document.title = TITLES[i] + ' - Voice Clone';
-                }
-            });
-        });
+    function findTabButton(label) {
+        var btns = document.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+            if (btns[i].textContent.trim() === label) return btns[i];
+        }
+        return null;
     }
-    watchTabs();
+
+    // Watch clicks on tab buttons -> update URL
+    function watchTabs() {
+        var found = 0;
+        LABELS.forEach((label, i) => {
+            var btn = findTabButton(label);
+            if (btn) {
+                found++;
+                btn.addEventListener('click', () => {
+                    if (window.location.pathname !== ROUTES[i]) {
+                        window.history.pushState(null, '', ROUTES[i]);
+                        document.title = LABELS[i] + ' - Voice Clone';
+                    }
+                });
+            }
+        });
+        if (found < LABELS.length) setTimeout(watchTabs, 500);
+    }
+    setTimeout(watchTabs, 1000);
 
     window.addEventListener('popstate', () => {
-        const i = ROUTES.indexOf(window.location.pathname);
-        const btns = document.querySelectorAll('button[role="tab"]');
-        if (i >= 0 && btns[i]) btns[i].click();
+        var i = ROUTES.indexOf(window.location.pathname);
+        if (i >= 0) { var btn = findTabButton(LABELS[i]); if (btn) btn.click(); }
     });
 }
 """
@@ -1395,27 +1406,31 @@ if __name__ == "__main__":
         js=CUSTOM_JS,
         head="""
 <script>
-// Route to correct tab based on URL path
-window.__VC_TARGET_PATH = window.location.pathname;
+window.__VC_PATH = window.location.pathname;
 document.addEventListener('DOMContentLoaded', function() {
     var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
     var TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-    var path = window.__VC_TARGET_PATH;
-    var idx = ROUTES.indexOf(path);
+    var TAB_LABELS = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+    var idx = ROUTES.indexOf(window.__VC_PATH);
     if (idx < 0) return;
     document.title = TITLES[idx] + ' - Voice Clone';
+    var targetLabel = TAB_LABELS[idx];
     var tries = 0;
     var timer = setInterval(function() {
         tries++;
-        var btns = document.querySelectorAll('button[role="tab"]');
-        if (btns.length > idx) {
-            btns[idx].click();
-            clearInterval(timer);
+        // Find the exact tab button by matching text content
+        var allBtns = document.querySelectorAll('button');
+        for (var i = 0; i < allBtns.length; i++) {
+            var txt = allBtns[i].textContent.trim();
+            if (txt === targetLabel) {
+                allBtns[i].click();
+                clearInterval(timer);
+                return;
+            }
         }
         if (tries > 150) clearInterval(timer);
     }, 100);
 });
-// Theme restore
 if (localStorage.getItem('vc-theme') === 'light') {
     document.documentElement.classList.add('light-mode');
 }
