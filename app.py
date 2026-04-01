@@ -1407,30 +1407,36 @@ if __name__ == "__main__":
         head="""
 <script>
 window.__VC_PATH = window.location.pathname;
-document.addEventListener('DOMContentLoaded', function() {
+window.__VC_ROUTED = false;
+
+// Gradio 6 renders client-side - buttons don't exist at DOMContentLoaded
+// Must poll continuously until Gradio finishes rendering
+(function vcRoute() {
     var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
     var TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-    var TAB_LABELS = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
     var idx = ROUTES.indexOf(window.__VC_PATH);
     if (idx < 0) return;
     document.title = TITLES[idx] + ' - Voice Clone';
-    var targetLabel = TAB_LABELS[idx];
+
+    var target = TITLES[idx];
     var tries = 0;
     var timer = setInterval(function() {
+        if (window.__VC_ROUTED) { clearInterval(timer); return; }
         tries++;
-        // Find the exact tab button by matching text content
-        var allBtns = document.querySelectorAll('button');
-        for (var i = 0; i < allBtns.length; i++) {
-            var txt = allBtns[i].textContent.trim();
-            if (txt === targetLabel) {
-                allBtns[i].click();
+        var btns = document.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+            if (btns[i].textContent.trim() === target) {
+                btns[i].click();
+                window.__VC_ROUTED = true;
                 clearInterval(timer);
                 return;
             }
         }
-        if (tries > 150) clearInterval(timer);
+        if (tries > 300) clearInterval(timer); // 30s timeout
     }, 100);
-});
+})();
+
+// Theme
 if (localStorage.getItem('vc-theme') === 'light') {
     document.documentElement.classList.add('light-mode');
 }
