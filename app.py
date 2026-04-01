@@ -1088,62 +1088,28 @@ body.light-mode .theme-toggle {
 # JS for URL-based tab routing: /tts, /library, /stt, /train, /history
 CUSTOM_JS = """
 () => {
+    // Update URL when user clicks tabs
     const ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
     const TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
-    let initialized = false;
 
-    function selectTab(idx) {
-        const btns = document.querySelectorAll('.tabs > .tab-nav > button');
-        if (btns.length > 0 && btns[idx]) { btns[idx].click(); return true; }
-        return false;
-    }
-
-    // Wait for Gradio tabs to render, then route
-    function waitAndRoute() {
-        const path = window.location.pathname;
-        const idx = ROUTES.indexOf(path);
-        if (idx < 0) return;
-
-        // Poll until tabs exist (Gradio renders async)
-        let attempts = 0;
-        const poll = setInterval(() => {
-            attempts++;
-            if (selectTab(idx)) {
-                clearInterval(poll);
-                document.title = TITLES[idx] + ' - Voice Clone';
-            }
-            if (attempts > 50) clearInterval(poll); // give up after 5s
-        }, 100);
-    }
-    waitAndRoute();
-
-    // Watch tab changes -> update URL + title
-    function setupObserver() {
-        const nav = document.querySelector('.tabs > .tab-nav');
-        if (!nav) { setTimeout(setupObserver, 500); return; }
-        if (initialized) return;
-        initialized = true;
-
-        const observer = new MutationObserver(() => {
-            const sel = document.querySelector('.tabs > .tab-nav > button.selected');
-            if (!sel) return;
-            const btns = [...document.querySelectorAll('.tabs > .tab-nav > button')];
-            const i = btns.indexOf(sel);
-            if (i >= 0 && i < ROUTES.length) {
-                if (window.location.pathname !== ROUTES[i]) {
+    function watchTabs() {
+        const btns = document.querySelectorAll('button[role="tab"]');
+        if (btns.length === 0) { setTimeout(watchTabs, 500); return; }
+        btns.forEach((btn, i) => {
+            btn.addEventListener('click', () => {
+                if (i < ROUTES.length && window.location.pathname !== ROUTES[i]) {
                     window.history.pushState(null, '', ROUTES[i]);
+                    document.title = TITLES[i] + ' - Voice Clone';
                 }
-                document.title = TITLES[i] + ' - Voice Clone';
-            }
+            });
         });
-        observer.observe(nav, { subtree: true, attributes: true, attributeFilter: ['class'] });
     }
-    setupObserver();
+    watchTabs();
 
-    // Browser back/forward
     window.addEventListener('popstate', () => {
         const i = ROUTES.indexOf(window.location.pathname);
-        if (i >= 0) selectTab(i);
+        const btns = document.querySelectorAll('button[role="tab"]');
+        if (i >= 0 && btns[i]) btns[i].click();
     });
 }
 """
@@ -1169,11 +1135,35 @@ with gr.Blocks(title="Voice Clone - Overmind") as app:
             </div>
         </nav>
         <script>
+            // Theme
             if (localStorage.getItem('vc-theme') === 'light') {
                 document.body.classList.add('light-mode');
                 var btn = document.getElementById('theme-toggle-btn');
                 if (btn) btn.textContent = '☽';
             }
+            // URL routing - select tab based on current path
+            (function() {
+                var ROUTES = ['/tts', '/library', '/stt', '/train', '/history'];
+                var TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
+                var path = window.location.pathname;
+                var targetIdx = ROUTES.indexOf(path);
+                if (targetIdx < 0) return;
+
+                document.title = TITLES[targetIdx] + ' - Voice Clone';
+
+                // Poll until Gradio renders tabs
+                var attempts = 0;
+                var poll = setInterval(function() {
+                    attempts++;
+                    var btns = document.querySelectorAll('button[role="tab"]');
+                    if (btns.length === 0) btns = document.querySelectorAll('.tab-nav button');
+                    if (btns.length > targetIdx) {
+                        btns[targetIdx].click();
+                        clearInterval(poll);
+                    }
+                    if (attempts > 100) clearInterval(poll);
+                }, 100);
+            })();
         </script>
     """)
 
