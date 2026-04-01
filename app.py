@@ -332,6 +332,14 @@ def library_tts(voice_selection, gen_text, speed):
 def train_new_voice(audio_file, voice_name, description, transcript, auto_transcript=""):
     """Start training a new voice for the library.
     Also saves correction data if transcript was edited."""
+    try:
+        return _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_transcript)
+    except Exception as e:
+        logger.error(f"Training error: {e}", exc_info=True)
+        return f"Lỗi: {str(e)}"
+
+
+def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_transcript=""):
     if not audio_file or not voice_name or not transcript:
         return "Vui lòng điền đầy đủ: audio, tên, và transcript."
 
@@ -369,7 +377,7 @@ def train_new_voice(audio_file, voice_name, description, transcript, auto_transc
         "transcript": transcript.strip(),
         "created_at": datetime.now().isoformat(),
         "status": "training",
-        "duration": round(duration, 1),
+        "duration": round(info["duration"], 1),
     }
     (voice_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
@@ -393,7 +401,7 @@ def train_new_voice(audio_file, voice_name, description, transcript, auto_transc
     )
     logger.info(f"Training started: {voice_id}")
 
-    return f"Đang huấn luyện giọng '{voice_name}' ({duration:.0f}s audio)... Kiểm tra ở tab Thư viện."
+    return f"Đang huấn luyện giọng '{voice_name}' ({info['duration']:.0f}s audio)... Kiểm tra ở tab Thư viện."
 
 
 def get_training_log(voice_selection):
