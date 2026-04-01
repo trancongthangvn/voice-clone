@@ -414,9 +414,12 @@ def _train_new_voice_impl(audio_file, voice_name, description, transcript, auto_
     if not train_script.exists():
         return "Lỗi: không tìm thấy script huấn luyện."
 
-    # Free GPU memory: unload Whisper before training (saves ~4GB VRAM)
-    logger.info("Unloading Whisper to free VRAM for training...")
+    # Free ALL GPU memory for training (F5-TTS + Whisper)
+    logger.info("Unloading ALL models to free VRAM for training...")
     models.unload_whisper()
+    models.unload_tts()
+    torch.cuda.empty_cache()
+    import gc; gc.collect()
     torch.cuda.empty_cache()
 
     # Start training subprocess (daemonized, log to file)

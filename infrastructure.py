@@ -86,6 +86,14 @@ class ModelManager:
                 logger.info("Whisper loaded")
             return self._whisper_model
 
+    def unload_tts(self):
+        with self._lock:
+            if self._tts_model is not None:
+                logger.info("Unloading TTS to free VRAM")
+                del self._tts_model
+                self._tts_model = None
+                torch.cuda.empty_cache()
+
     def unload_whisper(self):
         with self._lock:
             if self._whisper_model is not None:

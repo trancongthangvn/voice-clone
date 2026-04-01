@@ -111,7 +111,7 @@ import json
 with open('$SOVITS_DIR/GPT_SoVITS/configs/s2.json') as f:
     cfg = json.load(f)
 cfg['train']['epochs'] = 10
-cfg['train']['batch_size'] = 8
+cfg['train']['batch_size'] = 4
 cfg['train']['save_every_epoch'] = 5
 cfg['train']['fp16_run'] = True
 cfg['train']['num_workers'] = 4
@@ -142,7 +142,7 @@ import yaml
 with open('$SOVITS_DIR/GPT_SoVITS/configs/s1longer.yaml') as f:
     cfg = yaml.safe_load(f)
 cfg['train']['epochs'] = 15
-cfg['train']['batch_size'] = 8
+cfg['train']['batch_size'] = 4
 cfg['train']['save_every_epoch'] = 5
 cfg['train']['precision'] = '16-mixed'
 cfg['train']['num_workers'] = 4
