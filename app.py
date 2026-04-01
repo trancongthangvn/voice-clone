@@ -899,8 +899,8 @@ CUSTOM_CSS = """
     display: inline-block; margin-top: 0.5em;
     padding: 3px 10px; border-radius: 20px;
     font-size: 0.7em; font-weight: 500;
-    background: rgba(249,115,22,0.1);
-    color: #fb923c; border: 1px solid rgba(249,115,22,0.2);
+    background: rgba(217,119,6,0.08);
+    color: #d97706; border: 1px solid rgba(217,119,6,0.15);
 }
 
 /* Tabs */
@@ -916,9 +916,9 @@ CUSTOM_CSS = """
     border-bottom: 2px solid transparent !important;
 }
 .tabs > .tab-nav > button.selected {
-    color: #f97316 !important;
-    border-bottom: 2px solid #f97316 !important;
-    background: rgba(249,115,22,0.05) !important;
+    color: #d97706 !important;
+    border-bottom: 2px solid #d97706 !important;
+    background: rgba(217,119,6,0.04) !important;
 }
 .tabs > .tab-nav > button:hover:not(.selected) {
     color: #cbd5e1 !important;
@@ -927,7 +927,7 @@ CUSTOM_CSS = """
 
 /* Primary button - warm orange */
 .primary {
-    background: #ea580c !important;
+    background: #b45309 !important;
     border: none !important;
     font-weight: 600 !important;
     transition: all 0.15s ease !important;
@@ -935,9 +935,9 @@ CUSTOM_CSS = """
     border-radius: 8px !important;
 }
 .primary:hover {
-    background: #f97316 !important;
+    background: #d97706 !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(249,115,22,0.25) !important;
+    box-shadow: 0 4px 12px rgba(217,119,6,0.2) !important;
 }
 .primary:active {
     transform: translateY(0) !important;
@@ -985,7 +985,7 @@ textarea, input[type="text"] {
     transition: border-color 0.15s ease !important;
 }
 textarea:focus, input[type="text"]:focus {
-    border-color: rgba(249,115,22,0.4) !important;
+    border-color: rgba(217,119,6,0.3) !important;
 }
 
 /* Dropdown */
@@ -999,7 +999,7 @@ textarea:focus, input[type="text"]:focus {
 
 /* Focus */
 *:focus-visible {
-    outline: 1.5px solid rgba(249,115,22,0.5) !important;
+    outline: 1.5px solid rgba(217,119,6,0.35) !important;
     outline-offset: 2px !important;
 }
 
@@ -1032,14 +1032,18 @@ CUSTOM_JS = """
         if (path.endsWith(route)) { setTimeout(() => selectTab(idx), 500); break; }
     }
 
-    // Update URL when tab clicked
+    // Update URL + page title when tab clicked
+    const TAB_TITLES = ['Text to Speech', 'Thư viện giọng', 'Nhận dạng giọng nói', 'Huấn luyện', 'Lịch sử'];
     const observer = new MutationObserver(() => {
         const selected = document.querySelector('.tabs > .tab-nav > button.selected');
         if (selected) {
             const routes = ['/tts', '/library', '/stt', '/train', '/history'];
             const buttons = [...document.querySelectorAll('.tabs > .tab-nav > button')];
             const idx = buttons.indexOf(selected);
-            if (idx >= 0) window.history.replaceState(null, '', '#' + routes[idx]);
+            if (idx >= 0) {
+                window.history.replaceState(null, '', '#' + routes[idx]);
+                document.title = TAB_TITLES[idx] + ' - Voice Clone';
+            }
         }
     });
     const tabNav = document.querySelector('.tabs > .tab-nav');
@@ -1300,7 +1304,7 @@ if __name__ == "__main__":
         ssr_mode=False,
         allowed_paths=[str(BASE_DIR / "static")],
         theme=gr.themes.Soft(
-            primary_hue=gr.themes.colors.orange,
+            primary_hue=gr.themes.colors.amber,
             secondary_hue=gr.themes.colors.indigo,
             neutral_hue=gr.themes.colors.slate,
         ),
