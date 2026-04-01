@@ -626,15 +626,29 @@ WHISPER_TRANSCRIBE_OPTS = dict(
 
 def _load_whisper_impl():
     from faster_whisper import WhisperModel
+
+    # Check available VRAM to pick best compute type
+    gpu = get_gpu_info()
+    free_mb = gpu["memory_free_mb"] if gpu else 4000
+
+    # float16: best quality, ~4.5GB | int8_float16: faster, ~2.5GB
+    if free_mb > 5000:
+        compute = "float16"
+    else:
+        compute = "int8_float16"
+
+    logger.info(f"Whisper compute_type={compute} (VRAM free: {free_mb}MB)")
+
     # Check for fine-tuned model
     active_file = WHISPER_MODELS_DIR / "active_version.txt"
     if active_file.exists():
         version = active_file.read_text().strip()
         ct2_path = WHISPER_MODELS_DIR / version / "ct2"
         if ct2_path.exists():
-            return WhisperModel(str(ct2_path), device="cuda", compute_type="float16",
+            return WhisperModel(str(ct2_path), device="cuda", compute_type=compute,
                                 num_workers=4, cpu_threads=16)
-    return WhisperModel("large-v3", device="cuda", compute_type="float16",
+
+    return WhisperModel("large-v3", device="cuda", compute_type=compute,
                         num_workers=4, cpu_threads=16)
 
 
@@ -1213,13 +1227,15 @@ if __name__ == "__main__":
 
     logger.info("Loading F5-TTS model...")
     load_model()
-    # Whisper: lazy load on first STT request (saves ~4.5GB VRAM)
-    # Auto-unload after 2 min idle
+    logger.info("Loading Whisper large-v3 (sử dụng toàn bộ VRAM trống)...")
+    load_whisper()
 
-    # Start background memory monitor
+    # Start background memory monitor (unload Whisper only when training needs VRAM)
     start_memory_monitor(interval=30)
 
-    logger.info("F5-TTS loaded. Whisper on-demand. GPU queue active.")
+    gpu = get_gpu_info()
+    if gpu:
+        logger.info(f"All models loaded. VRAM: {gpu['memory_used_mb']}/{gpu['memory_total_mb']}MB. GPU queue active.")
     app.launch(
         server_name="127.0.0.1",
         server_port=7860,

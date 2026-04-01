@@ -95,12 +95,9 @@ class ModelManager:
                 torch.cuda.empty_cache()
 
     def maybe_unload_whisper(self, idle_seconds=120):
-        """Unload Whisper if idle for 2 minutes to free ~4.5GB VRAM."""
-        with self._lock:
-            if (self._whisper_model is not None
-                    and self._whisper_last_used > 0
-                    and time.time() - self._whisper_last_used > idle_seconds):
-                self.unload_whisper()
+        """Only unload Whisper when explicitly called (e.g. before training).
+        Keep loaded to maximize STT speed."""
+        pass  # Keep Whisper in VRAM - only unload via explicit unload_whisper() call
 
 
 # Global instance
