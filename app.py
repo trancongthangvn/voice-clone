@@ -914,25 +914,54 @@ CUSTOM_CSS = """
 
 /* ── Theme toggle ── */
 .theme-toggle {
-    position: fixed; top: 16px; right: 20px; z-index: 999;
-    width: 40px; height: 40px; border-radius: 50%;
-    border: 1px solid var(--accent-border); cursor: pointer;
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid rgba(128,128,128,0.15); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px; transition: all 0.2s ease;
-    background: var(--accent-light);
+    font-size: 16px; transition: all 0.15s ease;
+    background: transparent; color: inherit;
 }
-.theme-toggle:hover { background: var(--accent-border); }
+.theme-toggle:hover { background: rgba(128,128,128,0.1); }
 
-/* ── Header ── */
-.main-header { text-align: center; padding: 1.5em 0 0.8em; }
-.main-header h1 { font-size: 1.8em; margin: 0; font-weight: 700; letter-spacing: -0.02em; }
-.main-header p { margin: 0.2em 0 0; font-size: 0.88em; font-weight: 400; opacity: 0.6; }
-.main-header .version {
-    display: inline-block; margin-top: 0.5em;
-    padding: 3px 10px; border-radius: 20px;
-    font-size: 0.7em; font-weight: 500;
+/* ── Navbar ── */
+.site-navbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px; margin: -16px -16px 12px -16px;
+    border-bottom: 1px solid rgba(128,128,128,0.12);
+}
+.site-navbar .nav-left {
+    display: flex; align-items: center; gap: 10px;
+}
+.site-navbar .nav-logo {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--accent); display: flex; align-items: center;
+    justify-content: center; color: #fff; font-weight: 800; font-size: 16px;
+}
+.site-navbar .nav-brand {
+    font-size: 1.1em; font-weight: 700; letter-spacing: -0.02em;
+}
+.site-navbar .nav-brand span {
+    font-weight: 400; opacity: 0.4; font-size: 0.75em; margin-left: 6px;
+}
+.site-navbar .nav-right {
+    display: flex; align-items: center; gap: 8px;
+}
+.site-navbar .nav-badge {
+    padding: 3px 10px; border-radius: 20px; font-size: 0.68em; font-weight: 500;
     background: var(--accent-light); color: var(--accent-hover);
     border: 1px solid var(--accent-border);
+}
+.site-navbar .nav-status {
+    padding: 3px 10px; border-radius: 20px; font-size: 0.68em; font-weight: 500;
+    background: rgba(34,197,94,0.08); color: #22c55e;
+    border: 1px solid rgba(34,197,94,0.15);
+    display: flex; align-items: center; gap: 4px;
+}
+.site-navbar .nav-status .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
 }
 
 /* ── Tabs ── */
@@ -1019,8 +1048,8 @@ body.light-mode .gradio-container {
     background: #f8f9fb !important;
     color: #1e293b !important;
 }
-body.light-mode .main-header h1 { color: #0f172a !important; }
-body.light-mode .main-header p { color: #64748b !important; }
+body.light-mode .site-navbar { border-bottom-color: #e2e8f0 !important; }
+body.light-mode .site-navbar .nav-brand { color: #0f172a !important; }
 body.light-mode .panel, body.light-mode .block {
     background: #fff !important;
     border: 1px solid #e2e8f0 !important;
@@ -1098,21 +1127,29 @@ CUSTOM_JS = """
 
 with gr.Blocks(title="Voice Clone - Overmind") as app:
     gr.HTML("""
-        <div class='main-header'>
-            <h1>Voice Clone</h1>
-            <p>Clone giọng nói & Text-to-Speech tiếng Việt</p>
-            <span class='version'>F5-TTS &bull; GPT-SoVITS &bull; Whisper</span>
-        </div>
-        <button id='theme-toggle-btn' class='theme-toggle'
-                onclick="
-                    const isDark = document.body.classList.toggle('light-mode');
-                    this.textContent = isDark ? '☽' : '☀';
-                    localStorage.setItem('vc-theme', isDark ? 'light' : 'dark');
-                ">☀</button>
+        <nav class='site-navbar'>
+            <div class='nav-left'>
+                <div class='nav-logo'>VC</div>
+                <div class='nav-brand'>Voice Clone <span>by Overmind</span></div>
+            </div>
+            <div class='nav-right'>
+                <span class='nav-status'><span class='dot'></span> Online</span>
+                <span class='nav-badge'>F5-TTS</span>
+                <span class='nav-badge'>GPT-SoVITS</span>
+                <span class='nav-badge'>Whisper</span>
+                <button id='theme-toggle-btn' class='theme-toggle'
+                    onclick="
+                        const isDark = document.body.classList.toggle('light-mode');
+                        this.textContent = isDark ? '☽' : '☀';
+                        localStorage.setItem('vc-theme', isDark ? 'light' : 'dark');
+                    ">☀</button>
+            </div>
+        </nav>
         <script>
             if (localStorage.getItem('vc-theme') === 'light') {
                 document.body.classList.add('light-mode');
-                document.getElementById('theme-toggle-btn').textContent = '☽';
+                var btn = document.getElementById('theme-toggle-btn');
+                if (btn) btn.textContent = '☽';
             }
         </script>
     """)
